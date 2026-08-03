@@ -32,50 +32,60 @@ module.exports = {
 
                 try {
                     const task = cron.schedule(cronExp, async () => {
-                        const sock = getSock();
-                        if (!sock) return;
+                        const isEnabled = typeof db.isSchedulerEnabled === 'function' 
+                            ? db.isSchedulerEnabled() 
+                            : (db.schedulerSettings?.enabled !== false);
 
-                        let aiResponse = "";
-                        if (item.aiPrompt && item.order.includes('ai')) {
-                            try {
-                                const res = await groq.chat.completions.create({
-                                    messages: [{ role: "user", content: item.aiPrompt }],
-                                    model: "llama-3.3-70b-versatile",
-                                    temperature: 1.5 // 🛑 Added back to force true randomness!
-                                });
-                                aiResponse = res.choices[0]?.message?.content || "(AI Error)";
-                            } catch(e) { aiResponse = "(AI Error)"; }
-                        }
-
-                        const staticTxt = item.staticMsg || "";
-                        let finalMessage = "";
-                        
-                        // 🛑 NEWLINE FIX: Pure concatenation. No forced spaces or \n.
-                        if (item.order === 'text_ai') finalMessage = staticTxt + aiResponse;
-                        else if (item.order === 'ai_text') finalMessage = aiResponse + staticTxt;
-                        else if (item.order === 'text_only') finalMessage = staticTxt;
-                        else if (item.order === 'ai_only') finalMessage = aiResponse;
-
-                        if (finalMessage.trim()) {
-                            try {
-                                // 🟢 ONLINE FLASH: Briefly flag as 'available' to update Last Seen
-                                await sock.sendPresenceUpdate('available');
-                                
-                                // Send the scheduled message
-                                await sock.sendMessage(`${item.phone}@s.whatsapp.net`, { text: finalMessage });
-
-                                // 🔴 GHOST CLOAK: Set a 30-second timer to go back offline
-                                setTimeout(() => {
+                        if (isEnabled) {
+                            const sock = getSock();
+                            if (sock) {
+                                let aiResponse = "";
+                                if (item.aiPrompt && item.order && item.order.includes('ai')) {
                                     try {
-                                        sock.sendPresenceUpdate('unavailable');
-                                    } catch (err) {}
-                                }, 30000);
+                                        const res = await groq.chat.completions.create({
+                                            messages: [{ role: "user", content: item.aiPrompt }],
+                                            model: "llama-3.3-70b-versatile",
+                                            temperature: 1.5 // 🛑 Added back to force true randomness!
+                                        });
+                                        aiResponse = res.choices[0]?.message?.content || "(AI Error)";
+                                    } catch(e) { aiResponse = "(AI Error)"; }
+                                }
+
+                                const staticTxt = item.staticMsg || "";
+                                let finalMessage = "";
                                 
-                            } catch (sendErr) {
-                                console.error("Error during scheduled send:", sendErr.message);
+                                // 🛑 NEWLINE FIX: Pure concatenation. No forced spaces or \n.
+                                if (item.order === 'text_ai') finalMessage = staticTxt + aiResponse;
+                                else if (item.order === 'ai_text') finalMessage = aiResponse + staticTxt;
+                                else if (item.order === 'text_only') finalMessage = staticTxt;
+                                else if (item.order === 'ai_only') finalMessage = aiResponse;
+
+                                if (finalMessage.trim()) {
+                                    try {
+                                        // 🟢 ONLINE FLASH: Briefly flag as 'available' to update Last Seen
+                                        await sock.sendPresenceUpdate('available');
+                                        
+                                        // Send the scheduled message
+                                        await sock.sendMessage(`${item.phone}@s.whatsapp.net`, { text: finalMessage });
+
+                                        // 🔴 GHOST CLOAK: Set a 30-second timer to go back offline
+                                        setTimeout(() => {
+                                            try {
+                                                sock.sendPresenceUpdate('unavailable');
+                                            } catch (err) {}
+                                        }, 30000);
+                                        
+                                    } catch (sendErr) {
+                                        console.error("Error during scheduled send:", sendErr.message);
+                                    }
+                                }
                             }
+                        } else {
+                            console.log(`⏸️ [SCHEDULER PAUSED] Skipped sending message to ${item.phone} because Scheduler Toggle is OFF.`);
                         }
 
+                        // Always auto-delete one-time message after its scheduled instance arrives,
+                        // regardless of whether toggle was ON or OFF
                         if (item.type === 'once') {
                             db.scheduleData.splice(index, 1);
                             db.saveSchedule();
@@ -94,7 +104,25 @@ module.exports = {
 
         app.get('/', (req, res) => res.send(dashboardHTML));
         app.get('/api/list', (req, res) => res.json(db.scheduleData));
+        app.get('/api/scheduler-status', (req, res) => {
+            const enabled = typeof db.isSchedulerEnabled === 'function' ? db.isSchedulerEnabled() : true;
+            res.json({ enabled });
+        });
         
+        app.post('/api/scheduler-toggle', (req, res) => {
+            try {
+                if (req.body.password !== DASHBOARD_PASSWORD) return res.json({ error: "Wrong Password" });
+                const enabled = !!req.body.enabled;
+                if (typeof db.setSchedulerEnabled === 'function') {
+                    db.setSchedulerEnabled(enabled);
+                }
+                console.log(`🔀 [SCHEDULER TOGGLE] Status updated to: ${enabled ? 'ACTIVE (ON)' : 'PAUSED (OFF)'}`);
+                res.json({ success: true, enabled });
+            } catch (err) {
+                res.json({ error: "Server error during toggle: " + err.message });
+            }
+        });
+
         app.post('/api/schedule', (req, res) => {
             try {
                 if(req.body.password !== DASHBOARD_PASSWORD) return res.json({ error: "Wrong Password" });

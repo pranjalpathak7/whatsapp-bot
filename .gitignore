@@ -41,6 +41,7 @@ sessions/
 contacts.json
 memory.json
 schedule.json
+settings.json
 bot2_history.json
 bot2_logs/
 bot3_logs/

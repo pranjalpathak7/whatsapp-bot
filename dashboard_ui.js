@@ -22,6 +22,21 @@ module.exports = `
         </div>
 
         <div class="p-6 space-y-6">
+            <!-- 🛑 MASTER SCHEDULER TOGGLE -->
+            <div class="bg-gradient-to-r from-gray-50 to-indigo-50 border border-indigo-100 rounded-xl p-4 flex items-center justify-between shadow-sm">
+                <div>
+                    <div class="flex items-center gap-2">
+                        <span id="toggle-indicator-dot" class="w-3 h-3 rounded-full bg-green-500 animate-pulse"></span>
+                        <span id="toggle-status-title" class="font-bold text-gray-800 text-sm">Scheduler Active (ON)</span>
+                    </div>
+                    <p id="toggle-status-desc" class="text-xs text-gray-500 mt-0.5">Automated messages will be sent on schedule</p>
+                </div>
+                <label class="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" id="schedulerToggle" checked class="sr-only peer" onchange="toggleScheduler(this)">
+                    <div class="w-14 h-7 bg-gray-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-green-600 shadow-inner"></div>
+                </label>
+            </div>
+
             <div>
                 <label class="block text-xs font-bold text-gray-500 uppercase">Access Key</label>
                 <input type="password" id="password" class="w-full p-2 border-b-2 border-indigo-100 focus:border-indigo-600 outline-none transition" placeholder="Enter Password">
@@ -261,6 +276,69 @@ module.exports = `
             }
         }
 	
+        // 🛑 MASTER SCHEDULER TOGGLE LOGIC
+        async function fetchSchedulerStatus() {
+            try {
+                const res = await fetch('/api/scheduler-status?_t=' + Date.now(), { cache: 'no-store' });
+                const data = await res.json();
+                updateToggleUI(data.enabled);
+            } catch (e) {}
+        }
+
+        function updateToggleUI(enabled) {
+            const toggle = document.getElementById('schedulerToggle');
+            const dot = document.getElementById('toggle-indicator-dot');
+            const title = document.getElementById('toggle-status-title');
+            const desc = document.getElementById('toggle-status-desc');
+
+            if (toggle) toggle.checked = !!enabled;
+            if (dot && title && desc) {
+                if (enabled) {
+                    dot.className = "w-3 h-3 rounded-full bg-green-500 animate-pulse";
+                    title.innerText = "Scheduler Active (ON)";
+                    title.className = "font-bold text-green-700 text-sm";
+                    desc.innerText = "Automated messages will be sent on schedule";
+                    desc.className = "text-xs text-gray-500 mt-0.5";
+                } else {
+                    dot.className = "w-3 h-3 rounded-full bg-red-500";
+                    title.innerText = "Scheduler Inactive (OFF)";
+                    title.className = "font-bold text-red-600 text-sm";
+                    desc.innerText = "Messages are silenced and will be skipped at send time";
+                    desc.className = "text-xs text-red-500 font-medium mt-0.5";
+                }
+            }
+        }
+
+        async function toggleScheduler(checkbox) {
+            const pwd = document.getElementById('password').value;
+            if (!pwd) {
+                alert("🔒 Please enter the Access Key at the top before toggling the Scheduler!");
+                checkbox.checked = !checkbox.checked;
+                return;
+            }
+
+            const targetState = checkbox.checked;
+            try {
+                const res = await fetch('/api/scheduler-toggle', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ password: pwd, enabled: targetState })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    updateToggleUI(data.enabled);
+                } else {
+                    alert("❌ " + (data.error || "Failed to update scheduler status"));
+                    checkbox.checked = !targetState;
+                    updateToggleUI(!targetState);
+                }
+            } catch (err) {
+                alert("❌ Network error while updating scheduler toggle");
+                checkbox.checked = !targetState;
+                updateToggleUI(!targetState);
+            }
+        }
+
 	// 🛑 NEW: Polling engine to update the presence badge
        async function fetchPresence() {
            try {
@@ -269,6 +347,7 @@ module.exports = `
                
                const badge = document.getElementById('presence-badge');
                const statusText = document.getElementById('presence-status');
+               if (!badge || !statusText) return;
                
                let displayTxt = data.status === 'composing' ? 'Typing...' : (data.status === 'available' ? 'Online' : 'Offline');
                
@@ -292,6 +371,7 @@ module.exports = `
        fetchPresence();
        setInterval(fetchPresence, 60000); // Polls exactly once per minute
 
+        fetchSchedulerStatus();
         fetchSchedule();
     </script>
 </body>

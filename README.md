@@ -108,6 +108,8 @@ http://localhost:3000
 ```
 Enter your configured `DASHBOARD_PASSWORD` to create and manage schedules.
 
+- **Master Scheduler Toggle**: Located at the top of the dashboard. When turned **OFF (Paused)**, all scheduled messages are suppressed and skipped at their trigger time. One-time tasks will disappear as scheduled, while recurring (daily/weekly) tasks remain for future runs when reactivated.
+
 ---
 
 ## 💬 Bot Command Reference
