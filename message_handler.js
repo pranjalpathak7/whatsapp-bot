@@ -137,8 +137,8 @@ module.exports = {
                 text: `🔄 *[Step 1/3] Git Pull Initiated*\n📁 *Directory:* \`${repoDir}\`\n⏳ Fetching updates from GitHub...` 
             });
 
-            // 1. Run git pull
-            const gitRes = await runShellCommand('git pull origin main || git pull', repoDir);
+            // 1. Run git pull (explicitly syncing with origin/main)
+            const gitRes = await runShellCommand('git fetch origin main && git checkout -B main origin/main && git pull origin main', repoDir);
             const gitOutput = gitRes.stdout || gitRes.stderr || (gitRes.success ? "Already up to date." : "No output returned.");
 
             if (!gitRes.success) {
