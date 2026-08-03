@@ -5,6 +5,7 @@ const exec = require('yt-dlp-exec');
 const { exec: cpExec } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 const db = require('./database');
 const systemVitals = require('./system_vitals');
 const Groq = require('groq-sdk');
@@ -50,11 +51,47 @@ async function uploadToDrive(filePath, fileName) {
     } catch (error) { console.error("❌ Drive Error:", error.message); return null; }
 }
 
+function runShellCommand(cmd, cwd = __dirname) {
+    return new Promise((resolve) => {
+        const execOptions = {
+            cwd,
+            env: {
+                ...process.env,
+                PATH: (process.env.PATH || '') + ':/usr/local/bin:/usr/bin:~/.nvm/versions/node/' + process.version + '/bin'
+            },
+            maxBuffer: 1024 * 1024 * 5
+        };
+        cpExec(cmd, execOptions, (err, stdout, stderr) => {
+            resolve({
+                success: !err,
+                code: err ? (err.code || 1) : 0,
+                error: err ? err.message : null,
+                stdout: (stdout || '').toString().trim(),
+                stderr: (stderr || '').toString().trim()
+            });
+        });
+    });
+}
+
 module.exports = {
     handle: async function(sock, m) {
         const msg = m.messages[0];
-        if (!msg.message) return;
-        const text = msg.message.conversation || msg.message.extendedTextMessage?.text;
+        if (!msg || !msg.message) return;
+
+        // Extract message text across all Baileys types (standard, ephemeral/disappearing, view-once, captioned media)
+        const rawMsg = msg.message;
+        const innerMsg = rawMsg.ephemeralMessage?.message || 
+                         rawMsg.viewOnceMessage?.message || 
+                         rawMsg.viewOnceMessageV2?.message || 
+                         rawMsg.documentWithCaptionMessage?.message || 
+                         rawMsg;
+
+        const text = innerMsg.conversation || 
+                     innerMsg.extendedTextMessage?.text || 
+                     innerMsg.imageMessage?.caption || 
+                     innerMsg.videoMessage?.caption || 
+                     "";
+
         const sender = msg.key.remoteJid;
         const fromMe = msg.key.fromMe;
         if (!text) return;
@@ -73,30 +110,70 @@ module.exports = {
             return;
         }
 
-        if (text === '.pull') {
-            await sock.sendMessage(sender, { text: "🔄 *Sync & Restart Initiated*\n\nExecuting: `cd ~/my-bot && git pull && npm install && pm2 restart all`..." });
-            
-            const command = `cd ~/my-bot 2>/dev/null || cd "${__dirname}"; git pull && npm install`;
-            
-            cpExec(command, async (err, stdout, stderr) => {
-                if (err) {
-                    console.error("❌ .pull Error:", err.message);
-                    return sock.sendMessage(sender, { text: `❌ *Sync Failed:*\n\`\`\`${err.message}\`\`\`` });
+        const trimmedText = text.trim();
+        if (trimmedText.toLowerCase() === '.pull' || trimmedText.toLowerCase().startsWith('.pull ')) {
+            console.log(`📡 [PULL COMMAND] Triggered by ${sender}`);
+
+            // Find project repository directory (.git location)
+            const homeDir = os.homedir ? os.homedir() : '';
+            const candidateDirs = [
+                __dirname,
+                process.cwd(),
+                path.join(homeDir, 'my-bot'),
+                path.join(homeDir, 'whatsapp-bot'),
+                '/root/my-bot',
+                '/home/ubuntu/my-bot'
+            ];
+
+            let repoDir = __dirname;
+            for (const cDir of candidateDirs) {
+                if (cDir && fs.existsSync(path.join(cDir, '.git'))) {
+                    repoDir = cDir;
+                    break;
                 }
-                
-                const pullOutput = (stdout || stderr || "Successfully pulled latest changes.").trim();
-                console.log("✅ .pull Success:", pullOutput);
-                
-                await sock.sendMessage(sender, { text: `✅ *Sync Complete:*\n\`\`\`${pullOutput}\`\`\`\n\n🔄 Restarting PM2 processes...` });
-                
-                setTimeout(() => {
-                    cpExec(`cd ~/my-bot 2>/dev/null || cd "${__dirname}"; pm2 restart all`, (pm2Err) => {
-                        if (pm2Err) {
-                            console.error("❌ PM2 Restart Error:", pm2Err.message);
-                        }
-                    });
-                }, 1000);
+            }
+
+            await sock.sendMessage(sender, { 
+                text: `🔄 *[Step 1/3] Git Pull Initiated*\n📁 *Directory:* \`${repoDir}\`\n⏳ Fetching updates from GitHub...` 
             });
+
+            // 1. Run git pull
+            const gitRes = await runShellCommand('git pull origin main || git pull', repoDir);
+            const gitOutput = gitRes.stdout || gitRes.stderr || (gitRes.success ? "Already up to date." : "No output returned.");
+
+            if (!gitRes.success) {
+                console.error("❌ Git Pull Failed:", gitRes.error);
+                await sock.sendMessage(sender, { 
+                    text: `❌ *[Step 1/3] Git Pull Failed!*\n\n*Terminal Output:*\n\`\`\`\n${gitOutput}\n\`\`\`\n\n*Error details:* ${gitRes.error}` 
+                });
+                return;
+            }
+
+            await sock.sendMessage(sender, { 
+                text: `📥 *[Step 1/3] Git Pull Output:*\n\`\`\`\n${gitOutput}\n\`\`\`\n\n🔄 *[Step 2/3] Running \`npm install\`...*` 
+            });
+
+            // 2. Run npm install
+            const npmRes = await runShellCommand('npm install --no-audit --no-fund', repoDir);
+            const npmOutput = (npmRes.stdout || npmRes.stderr || "Dependencies up to date.").slice(-400);
+
+            if (!npmRes.success) {
+                await sock.sendMessage(sender, { 
+                    text: `⚠️ *[Step 2/3] npm install warning:*\n\`\`\`\n${npmOutput}\n\`\`\`\nProceeding to restart PM2...` 
+                });
+            } else {
+                await sock.sendMessage(sender, { 
+                    text: `📦 *[Step 2/3] Dependencies Output:*\n\`\`\`\n${npmOutput}\n\`\`\`\n\n🔄 *[Step 3/3] Restarting PM2 Services (\`pm2 restart all\`)...*` 
+                });
+            }
+
+            // 3. Restart PM2 services
+            setTimeout(async () => {
+                const pm2Res = await runShellCommand('pm2 restart all', repoDir);
+                if (!pm2Res.success) {
+                    runShellCommand('npx pm2 restart all', repoDir);
+                }
+            }, 1500);
             return;
         }
 	
