@@ -2,6 +2,7 @@ require('dotenv').config();
 const { delay } = require('@whiskeysockets/baileys');
 const { google } = require('googleapis');
 const exec = require('yt-dlp-exec');
+const { exec: cpExec } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const db = require('./database');
@@ -69,6 +70,33 @@ module.exports = {
         if (text === '.vitals') {
             await sock.sendMessage(sender, { text: "🩺 Running diagnostics..." });
             await sock.sendMessage(sender, { text: systemVitals.getHealthStats(__dirname) });
+            return;
+        }
+
+        if (text === '.pull') {
+            await sock.sendMessage(sender, { text: "🔄 *Sync & Restart Initiated*\n\nExecuting: `cd ~/my-bot && git pull && npm install && pm2 restart all`..." });
+            
+            const command = `cd ~/my-bot 2>/dev/null || cd "${__dirname}"; git pull && npm install`;
+            
+            cpExec(command, async (err, stdout, stderr) => {
+                if (err) {
+                    console.error("❌ .pull Error:", err.message);
+                    return sock.sendMessage(sender, { text: `❌ *Sync Failed:*\n\`\`\`${err.message}\`\`\`` });
+                }
+                
+                const pullOutput = (stdout || stderr || "Successfully pulled latest changes.").trim();
+                console.log("✅ .pull Success:", pullOutput);
+                
+                await sock.sendMessage(sender, { text: `✅ *Sync Complete:*\n\`\`\`${pullOutput}\`\`\`\n\n🔄 Restarting PM2 processes...` });
+                
+                setTimeout(() => {
+                    cpExec(`cd ~/my-bot 2>/dev/null || cd "${__dirname}"; pm2 restart all`, (pm2Err) => {
+                        if (pm2Err) {
+                            console.error("❌ PM2 Restart Error:", pm2Err.message);
+                        }
+                    });
+                }, 1000);
+            });
             return;
         }
 	

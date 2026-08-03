@@ -116,6 +116,7 @@ Enter your configured `DASHBOARD_PASSWORD` to create and manage schedules.
 | :--- | :--- |
 | `!ping` | Health check response (`pong 🏓`) |
 | `.vitals` | Check server RAM, disk space, and uptime |
+| `.pull` | Pull latest GitHub code, install npm dependencies & restart PM2 |
 | `.ai <prompt>` | Query the Groq AI with long-term memory context |
 | `.save <url>` | Download video via yt-dlp and upload to Google Drive |
 | `.busy on` / `.sleep` | Enable busy mode (AI handles incoming chats) |
