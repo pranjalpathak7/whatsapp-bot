@@ -263,39 +263,48 @@ async function startbot4() {
     }, 2000); 
 
     // 📡 ONLINE PRESENCE TRACKER for +919140770471
-    // KEY FIX: WhatsApp now uses LID-based JIDs (e.g. 12345@lid) for some contacts
-    // instead of the traditional phone-based JID (919140770471@s.whatsapp.net).
-    // We CANNOT rely on exact JID matching. Instead we:
-    //   1. Log ALL presence events for diagnostics.
-    //   2. Check if the phone number is contained in any JID in the event.
-    //   3. Fall back to checking ALL participants in presences for matching status.
+    // ROOT CAUSE FIX: WhatsApp now uses LID-format JIDs (e.g. 18713615428427780@lid)
+    // instead of phone-number JIDs (919140770471@s.whatsapp.net).
+    // The LID is a random opaque number — it does NOT contain the phone number.
+    // So `id.includes(TRACK_PHONE)` is ALWAYS false for LID events.
+    //
+    // SOLUTION: Auto-discover and persist the LID on the FIRST presence event
+    // that arrives after we call presenceSubscribe. Since we only subscribe to
+    // one user, the first @lid event MUST be for our target. Store it as TRACKED_LID
+    // and use it for all future filtering.
+    let TRACKED_LID = null; // Will be set from first @lid presence event
+
     sock4.ev.on('presence.update', ({ id, presences }) => {
         try {
-            // --- Diagnostic log: always print what we receive so we can debug ---
+            // Always log raw for diagnostics
             const presenceSummary = Object.entries(presences)
                 .map(([jid, p]) => `${jid}=${p.lastKnownPresence}`)
                 .join(', ');
             console.log(`[PRESENCE RAW] id=${id} | ${presenceSummary}`);
 
-            // --- Check if this event involves our target ---
-            // Match by: phone number in the id, OR phone number in any presences key
-            const idContainsTarget = id.includes(TRACK_PHONE);
-            const presencesContainTarget = Object.keys(presences).some(jid => jid.includes(TRACK_PHONE));
+            // --- Match our target: phone number (PN format) OR discovered LID ---
+            const idMatchesPhone    = id.includes(TRACK_PHONE);
+            const keyMatchesPhone   = Object.keys(presences).some(j => j.includes(TRACK_PHONE));
 
-            if (!idContainsTarget && !presencesContainTarget) return; // not our target
+            // LID auto-discovery: if we subscribed and see a @lid event we haven't
+            // catalogued yet, it MUST be our target — save it.
+            if (!TRACKED_LID && !idMatchesPhone && !keyMatchesPhone && id.endsWith('@lid')) {
+                TRACKED_LID = id;
+                console.log(`[PRESENCE] Auto-identified target LID: ${TRACKED_LID} → +${TRACK_PHONE}`);
+            }
 
-            // Get the status — find the first presence entry that matches
+            const isOurTarget = idMatchesPhone || keyMatchesPhone || (TRACKED_LID && id === TRACKED_LID);
+            if (!isOurTarget) return; // Truly not our target
+
+            // Get status from first presence entry (only one in a 1-on-1 chat)
             let status = null;
-            for (const [jid, p] of Object.entries(presences)) {
-                // Accept if jid matches phone, OR if id matches phone (1-on-1 chat)
-                if (jid.includes(TRACK_PHONE) || idContainsTarget) {
-                    status = p.lastKnownPresence;
-                    break;
-                }
+            for (const [, p] of Object.entries(presences)) {
+                status = p.lastKnownPresence;
+                break;
             }
             if (!status) return;
 
-            console.log(`[PRESENCE] Target +${TRACK_PHONE} status: ${status}`);
+            console.log(`[PRESENCE] Target +${TRACK_PHONE} → ${status}`);
 
             if (status === 'available' || status === 'composing' || status === 'recording') {
                 if (onlineSince === null) {
