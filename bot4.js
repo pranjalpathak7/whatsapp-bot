@@ -58,7 +58,7 @@ if (!fs.existsSync(ologsDir)) fs.mkdirSync(ologsDir);
 
 // Target account to track online presence
 // The phone number portion — used for matching against any JID format (PN or LID)
-const TRACK_PHONE = '919140770471';
+const TRACK_PHONE = '917054406788';
 const TRACK_JID   = TRACK_PHONE + '@s.whatsapp.net'; // standard PN-based JID for subscribe call
 let presenceSubscribeTimer = null; // for periodic re-subscription
 
@@ -262,7 +262,7 @@ async function startbot4() {
         } catch (err) { }
     }, 2000); 
 
-    // 📡 ONLINE PRESENCE TRACKER for +919140770471
+    // 📡 ONLINE PRESENCE TRACKER for +917054406788
     // DEFINITIVE FIX: Events ARE arriving (confirmed from logs) but LID JIDs
     // (e.g. 18713615428427780@lid) do NOT contain the phone number, so any
     // phone-number or string-matching filter will ALWAYS return false.

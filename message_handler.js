@@ -569,16 +569,16 @@ module.exports = {
                }
                const ologFile = path.join(__dirname, 'bot4_ologs', targetDate4 + '.json');
                if (!fs.existsSync(ologFile)) {
-                   return sock.sendMessage(sender, { text: '⚠️ No online activity recorded for +919140770471 on ' + targetDate4 + '.' });
+                   return sock.sendMessage(sender, { text: '⚠️ No online activity recorded for +917054406788 on ' + targetDate4 + '.' });
                }
                try {
                    const spans = JSON.parse(fs.readFileSync(ologFile));
-                   if (!spans || spans.length === 0) return sock.sendMessage(sender, { text: '⚠️ Online logs for +919140770471 on ' + targetDate4 + ' are empty.' });
+                   if (!spans || spans.length === 0) return sock.sendMessage(sender, { text: '⚠️ Online logs for +917054406788 on ' + targetDate4 + ' are empty.' });
                    const totalMs = spans.reduce((sum, s) => sum + (s.toMs - s.fromMs), 0);
                    const totalMin = Math.floor(totalMs / 60000);
                    const totalSec = Math.round((totalMs % 60000) / 1000);
                    const totalStr = totalMin > 0 ? (totalMin + 'm ' + totalSec + 's') : (totalSec + 's');
-                   let replyText = '📊 *Online Log — +919140770471*\n📅 *Date: ' + targetDate4 + '*\n🕐 *Total Online: ' + totalStr + '*\n' + '─'.repeat(28) + '\n\n';
+                   let replyText = '📊 *Online Log — +917054406788*\n📅 *Date: ' + targetDate4 + '*\n🕐 *Total Online: ' + totalStr + '*\n' + '─'.repeat(28) + '\n\n';
                    spans.forEach((s, i) => { replyText += (i+1) + '. 🟢 ' + s.from + '  →  🔴 ' + s.to + '\n    ⏱ Duration: ' + s.duration + '\n'; });
                    await sock.sendMessage(sender, { text: replyText.trim() });
                } catch (e) {
