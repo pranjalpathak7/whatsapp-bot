@@ -141,7 +141,13 @@ async function startbot4() {
         version,
         auth: state,
         printQRInTerminal: false,
-        logger: pino({ level: 'error' }),
+        // CRITICAL: Must be true so WhatsApp treats this as a full active session.
+        // Without this, WA server will NOT push presence events (available/unavailable)
+        // to this socket, because it treats the session as background/inactive.
+        markOnlineOnConnect: true,
+        // CRITICAL: Must be warn (not error) so we see the 'no name present' warning
+        // if creds.me.name is missing, which silently blocks presenceSubscribe.
+        logger: pino({ level: 'warn' }),
         browser: ['Ubuntu', 'Chrome', '20.0.04'],
     });
 
@@ -153,22 +159,41 @@ async function startbot4() {
         if (connection === 'open') {
             console.log('\n✅ Bot4 is Online and Logging Account 4.\n');
 
-            // ----- Presence Subscription -----
-            // Subscribe to presence for the tracked number. WhatsApp requires
-            // this call to start pushing available/unavailable events.
-            // We also schedule periodic renewals because subscriptions can expire.
+            // ------------------------------------------------------------------
+            // DEFINITIVE PRESENCE SUBSCRIPTION SEQUENCE (confirmed working pattern)
+            //
+            // WhatsApp requires THREE things in this exact order:
+            // 1. The socket must have announced itself as 'available' FIRST.
+            //    Without this, WA server ignores presenceSubscribe silently.
+            // 2. Wait a short delay to let the 'available' state propagate.
+            // 3. THEN call presenceSubscribe for the target JID.
+            //
+            // markOnlineOnConnect:true above makes WA treat this as an active
+            // session, which is what allows it to receive presence push events.
+            // ------------------------------------------------------------------
             const doSubscribe = async () => {
                 try {
+                    // Step 1: Announce ourselves as available (required handshake)
+                    await sock4.sendPresenceUpdate('available');
+                    console.log('🟢 [PRESENCE] Announced self as available');
+
+                    // Step 2: Brief delay for the available state to register
+                    await new Promise(r => setTimeout(r, 2000));
+
+                    // Step 3: Now subscribe to target's presence
                     await sock4.presenceSubscribe(TRACK_JID);
-                    console.log(`📶 [PRESENCE] Re-subscribed to ${TRACK_JID}`);
-                } catch(e) { console.error('❌ bot4 presenceSubscribe error:', e.message); }
+                    console.log(`📶 [PRESENCE] Subscribed to ${TRACK_JID}`);
+                    console.log(`🔍 [PRESENCE] Watching +${TRACK_PHONE} for online/offline events...`);
+                } catch(e) { 
+                    console.error('❌ bot4 presence setup error:', e.message); 
+                }
             };
 
+            // Run immediately after connect, and then every 4 minutes to keep alive
+            // (WhatsApp presence subscriptions can silently expire)
             await doSubscribe();
-
-            // Renew subscription every 5 minutes to keep it alive
             if (presenceSubscribeTimer) clearInterval(presenceSubscribeTimer);
-            presenceSubscribeTimer = setInterval(doSubscribe, 5 * 60 * 1000);
+            presenceSubscribeTimer = setInterval(doSubscribe, 4 * 60 * 1000);
         }
         if (connection === 'close') {
             // Stop renewal timer on disconnect
