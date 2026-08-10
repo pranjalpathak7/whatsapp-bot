@@ -88,7 +88,7 @@ async function startbot4() {
     const sock4 = makeWASocket({
         version,
         auth: state,
-        printQRInTerminal: true,
+        printQRInTerminal: false,
         logger: pino({ level: 'error' }),
         browser: ['Ubuntu', 'Chrome', '20.0.04'],
     });
@@ -98,8 +98,12 @@ async function startbot4() {
     sock4.ev.on('connection.update', (u) => {
         const { connection, qr } = u;
         if (qr) qrcode.generate(qr, { small: true });
-        if (connection === 'open') console.log('\n✅ bot4 is Online and Logging Account 4.\n');
-        if (connection === 'close') setTimeout(startbot4, 2000); 
+        if (connection === 'open') console.log('\n✅ Bot4 is Online and Logging Account 4.\n');
+        if (connection === 'close') {
+            const reason = u.lastDisconnect?.error?.output?.statusCode || u.lastDisconnect?.error?.message;
+            console.log(`\n❌ Connection Closed. Reason: ${reason}. Reconnecting in 2s...`);
+            setTimeout(startbot4, 2000); 
+        }
     });
 
     // Outbox Scanner for Bot 4

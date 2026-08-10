@@ -88,7 +88,7 @@ async function startBot3() {
     const sock3 = makeWASocket({
         version,
         auth: state,
-        printQRInTerminal: true,
+        printQRInTerminal: false,
         logger: pino({ level: 'error' }),
         browser: ['Ubuntu', 'Chrome', '20.0.04'],
     });
@@ -99,7 +99,11 @@ async function startBot3() {
         const { connection, qr } = u;
         if (qr) qrcode.generate(qr, { small: true });
         if (connection === 'open') console.log('\n✅ Bot3 is Online and Logging Account 3.\n');
-        if (connection === 'close') setTimeout(startBot3, 2000); 
+        if (connection === 'close') {
+            const reason = u.lastDisconnect?.error?.output?.statusCode || u.lastDisconnect?.error?.message;
+            console.log(`\n❌ Connection Closed. Reason: ${reason}. Reconnecting in 2s...`);
+            setTimeout(startBot3, 2000); 
+        }
     });
 
     // Outbox Scanner for Bot 3
