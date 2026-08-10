@@ -82,8 +82,8 @@ async function startbot4() {
     if (outboxInterval) clearInterval(outboxInterval);
 
     const { version } = await fetchLatestBaileysVersion();
-    // 🛑 Crucial: Using auth_baileys_3 to prevent cross-contamination
-    const { state, saveCreds } = await useMultiFileAuthState('auth_baileys_3'); 
+    // 🛑 Crucial: Using auth_baileys_4 to prevent cross-contamination
+    const { state, saveCreds } = await useMultiFileAuthState('auth_baileys_4'); 
 
     const sock4 = makeWASocket({
         version,
@@ -103,11 +103,13 @@ async function startbot4() {
             const reason = u.lastDisconnect?.error?.output?.statusCode || u.lastDisconnect?.error?.message;
             if (reason === 401) {
                 console.log("⚠️ Session Invalid (401). Wiping old session data to generate a new QR Code...");
-                fs.rmSync(path.join(__dirname, 'auth_baileys_4'), { recursive: true, force: true });
+                try { fs.rmSync(path.join(__dirname, 'auth_baileys_4'), { recursive: true, force: true }); } catch(e){}
+                console.log("🔄 Exiting process to allow a clean restart...");
+                process.exit(1); // Safest way to drop the bad socket and let PM2/user restart fresh
             } else {
                 console.log(`\n❌ Connection Closed. Reason: ${reason}. Reconnecting in 2s...`);
+                setTimeout(startbot4, 2000); 
             }
-            setTimeout(startbot4, 2000); 
         }
     });
 

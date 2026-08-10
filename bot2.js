@@ -105,11 +105,13 @@ async function startBot2() {
             const reason = u.lastDisconnect?.error?.output?.statusCode || u.lastDisconnect?.error?.message;
             if (reason === 401) {
                 console.log("⚠️ Session Invalid (401). Wiping old session data to generate a new QR Code...");
-                fs.rmSync(path.join(__dirname, 'auth_baileys_2'), { recursive: true, force: true });
+                try { fs.rmSync(path.join(__dirname, 'auth_baileys_2'), { recursive: true, force: true }); } catch(e){}
+                console.log("🔄 Exiting process to allow a clean restart...");
+                process.exit(1); 
             } else {
                 console.log(`\n❌ Connection Closed. Reason: ${reason}. Reconnecting in 2s...`);
+                setTimeout(startBot2, 2000); 
             }
-            setTimeout(startBot2, 2000); 
         }
     });
 
