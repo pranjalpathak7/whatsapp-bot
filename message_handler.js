@@ -433,6 +433,123 @@ module.exports = {
        }
        // 🟢 NEW BLOCK FOR BOT 3 ENDS HERE 🟢
 
+       if (text.startsWith('.bot4 ')) {
+           const parts = text.split(' ');
+           const subCommand = parts[1];
+
+           const fs = require('fs');
+           const path = require('path');
+           const outboxDir = path.join(__dirname, 'bot4_outbox');
+           if (!fs.existsSync(outboxDir)) fs.mkdirSync(outboxDir);
+
+           // 🛑 Clear Chat Command (e.g., .bot4 clear 9891534527)
+           if (subCommand === 'clear') {
+               const clearTarget = parts[2];
+               if (!/^\d{10}$/.test(clearTarget)) {
+                   return sock.sendMessage(sender, { text: "❌ Invalid format. Use: .bot4 clear 9891534527" });
+               }
+               const targetNumber = "91" + clearTarget;
+               const taskFile = path.join(outboxDir, `task_${Date.now()}_${Math.floor(Math.random() * 1000)}.json`);
+               fs.writeFileSync(taskFile, JSON.stringify({ type: 'clear', number: targetNumber }));
+               await sock.sendMessage(sender, { text: `🧹 Queued! Account 4 is clearing the chat for ${targetNumber}.` });
+               return;
+           }
+
+           // 🛑 Block / Unblock Commands (e.g., .bot4 block 9891534527)
+           if (subCommand === 'block' || subCommand === 'unblock') {
+               const targetAction = parts[2];
+               if (!/^\d{10}$/.test(targetAction)) {
+                   return sock.sendMessage(sender, { text: `❌ Invalid format. Use: .bot4 ${subCommand} 9891534527` });
+               }
+               const targetNumber = "91" + targetAction;
+               const taskFile = path.join(outboxDir, `task_${Date.now()}_${Math.floor(Math.random() * 1000)}.json`);
+               fs.writeFileSync(taskFile, JSON.stringify({ type: subCommand, number: targetNumber }));
+               const statusIcon = subCommand === 'block' ? "🚫" : "✅";
+               await sock.sendMessage(sender, { text: `${statusIcon} Queued! Account 4 is executing a network request to ${subCommand} ${targetNumber}.` });
+               return;
+           }
+
+           // 🛑 Send Message Command (e.g., .bot4 9891532527 Hello)
+           if (/^\d{10}$/.test(subCommand)) {
+               const targetNumber = "91" + subCommand;
+               const messageToSend = parts.slice(2).join(' ');
+               if (!messageToSend) {
+                   return sock.sendMessage(sender, { text: "❌ Please provide a message to send." });
+               }
+               const taskFile = path.join(outboxDir, `task_${Date.now()}_${Math.floor(Math.random() * 1000)}.json`);
+               fs.writeFileSync(taskFile, JSON.stringify({ type: 'send', number: targetNumber, text: messageToSend }));
+               await sock.sendMessage(sender, { text: `✅ Queued! Account 4 is securely transmitting your message to ${targetNumber}.` });
+               return;
+           }
+
+           // 🛑 Logs Command (e.g., .bot4 logs 3006)
+           if (subCommand === 'logs') {
+               let inputDate = parts[2]; 
+               let targetDate = "";
+
+               const formatter = new Intl.DateTimeFormat('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: '2-digit', year: 'numeric' });
+               const nowIST = new Date();
+               const dParts = formatter.formatToParts(nowIST);
+               
+               const currentDay = dParts.find(p => p.type === 'day').value;
+               const currentMonth = dParts.find(p => p.type === 'month').value;
+               const currentYear = parseInt(dParts.find(p => p.type === 'year').value, 10);
+
+               if (inputDate && inputDate.length === 4) {
+                   const day = inputDate.slice(0, 2);
+                   const month = inputDate.slice(2, 4);
+                   let targetYear = currentYear;
+                   if (parseInt(month, 10) > parseInt(currentMonth, 10) || (month === currentMonth && parseInt(day, 10) > parseInt(currentDay, 10))) {
+                       targetYear = currentYear - 1; 
+                   }
+                   targetDate = `${day}-${month}-${targetYear}`;
+               } else {
+                   targetDate = `${currentDay}-${currentMonth}-${currentYear}`;
+               }
+
+               const logFile = path.join(__dirname, 'bot4_logs', `${targetDate}.json`);
+
+               if (!fs.existsSync(logFile)) {
+                   return sock.sendMessage(sender, { text: `📭 No activity recorded for Account 4 on ${targetDate}.` });
+               }
+
+               try {
+                   const logs = JSON.parse(fs.readFileSync(logFile));
+                   if (logs.length === 0) return sock.sendMessage(sender, { text: `📭 Logs for Account 4 on ${targetDate} are empty.` });
+
+                   const groupedLogs = {};
+                   const nameDirectory = {}; 
+
+                   logs.forEach(log => {
+                       const number = log.contact;
+                       if (!groupedLogs[number]) groupedLogs[number] = [];
+                       groupedLogs[number].push(log);
+                       if (log.contactName && log.contactName !== "Unknown Contact") {
+                           nameDirectory[number] = log.contactName;
+                       }
+                   });
+
+                   await sock.sendMessage(sender, { text: `📅 *Account 4 Logs | ${targetDate}*\n_Sending individual chat logs..._` });
+
+                   for (const [number, msgs] of Object.entries(groupedLogs)) {
+                       const displayName = nameDirectory[number] || "Unknown Contact";
+                       let replyText = `*👤 ${displayName} (${number})*\n\n`;
+                       msgs.sort((a, b) => a.timestamp - b.timestamp);
+                       msgs.forEach(m => {
+                           const directionTag = m.direction === "Sent" ? "📤 [Sent]" : "📥 [Received]";
+                           replyText += `${directionTag} [${m.time}] : ${m.message}\n`;
+                       });
+                       await sock.sendMessage(sender, { text: replyText.trim() });
+                       await delay(1000); 
+                   }
+               } catch (e) {
+                   await sock.sendMessage(sender, { text: "❌ Error reading Bot 4 logs." });
+               }
+               return;
+           }
+       }
+       // 🟢 NEW BLOCK FOR BOT 3 ENDS HERE 🟢
+
         if (text === '.busy on' || text === '.sleep') {
             db.isBusy = true;
             await sock.sendMessage(sender, { text: "💤 Busy Mode ON." });

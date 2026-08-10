@@ -99,6 +99,7 @@ npm start
 ```bash
 npm run bot2   # Starts Account 2 Logger
 npm run bot3   # Starts Account 3 Logger
+npm run bot4   # Starts Account 4 Logger
 ```
 
 ### Accessing the Web Dashboard
@@ -134,6 +135,7 @@ Enter your configured `DASHBOARD_PASSWORD` to create and manage schedules.
 | `.bot2 clear <number>` | Clear chat on Account 2 |
 | `.bot2 block <number>` | Block a contact on Account 2 |
 | `.bot3 ...` | Execute equivalent commands on Account 3 |
+| `.bot4 ...` | Execute equivalent commands on Account 4 |
 
 ---
 

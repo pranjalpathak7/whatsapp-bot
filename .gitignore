@@ -28,6 +28,7 @@ cookies.txt
 auth_baileys/
 auth_baileys_2/
 auth_baileys_3/
+auth_baileys_4/
 baileys_auth_info/
 auth_info_baileys/
 session/
@@ -43,10 +44,14 @@ memory.json
 schedule.json
 settings.json
 bot2_history.json
+bot3_history.json
+bot4_history.json
 bot2_logs/
 bot3_logs/
+bot4_logs/
 bot2_outbox/
 bot3_outbox/
+bot4_outbox/
 logs/
 *.log
 
@@ -56,6 +61,7 @@ logs/
 vid_*.mp4
 bot2_*
 bot3_*
+bot4_*
 temp/
 tmp/
 downloads/
