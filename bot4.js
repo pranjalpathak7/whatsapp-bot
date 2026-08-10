@@ -263,60 +263,33 @@ async function startbot4() {
     }, 2000); 
 
     // 📡 ONLINE PRESENCE TRACKER for +919140770471
-    // ROOT CAUSE FIX: WhatsApp now uses LID-format JIDs (e.g. 18713615428427780@lid)
-    // instead of phone-number JIDs (919140770471@s.whatsapp.net).
-    // The LID is a random opaque number — it does NOT contain the phone number.
-    // So `id.includes(TRACK_PHONE)` is ALWAYS false for LID events.
+    // DEFINITIVE FIX: Events ARE arriving (confirmed from logs) but LID JIDs
+    // (e.g. 18713615428427780@lid) do NOT contain the phone number, so any
+    // phone-number or string-matching filter will ALWAYS return false.
     //
-    // SOLUTION: Auto-discover and persist the LID on the FIRST presence event
-    // that arrives after we call presenceSubscribe. Since we only subscribe to
-    // one user, the first @lid event MUST be for our target. Store it as TRACKED_LID
-    // and use it for all future filtering.
-    let TRACKED_LID = null; // Will be set from first @lid presence event
-
+    // Since we subscribed to exactly ONE contact (TRACK_JID), every presence
+    // event that arrives on this socket is for that contact. No filtering needed.
+    // The onlineSince state machine prevents double-counting.
     sock4.ev.on('presence.update', ({ id, presences }) => {
         try {
-            // Always log raw for diagnostics
-            const presenceSummary = Object.entries(presences)
-                .map(([jid, p]) => `${jid}=${p.lastKnownPresence}`)
-                .join(', ');
-            console.log(`[PRESENCE RAW] id=${id} | ${presenceSummary}`);
+            for (const [participantJid, presenceData] of Object.entries(presences)) {
+                const status = presenceData.lastKnownPresence;
 
-            // --- Match our target: phone number (PN format) OR discovered LID ---
-            const idMatchesPhone    = id.includes(TRACK_PHONE);
-            const keyMatchesPhone   = Object.keys(presences).some(j => j.includes(TRACK_PHONE));
+                // Always log so we can see exactly what's happening
+                console.log(`[PRESENCE] id=${id} | ${participantJid} → ${status}`);
 
-            // LID auto-discovery: if we subscribed and see a @lid event we haven't
-            // catalogued yet, it MUST be our target — save it.
-            if (!TRACKED_LID && !idMatchesPhone && !keyMatchesPhone && id.endsWith('@lid')) {
-                TRACKED_LID = id;
-                console.log(`[PRESENCE] Auto-identified target LID: ${TRACKED_LID} → +${TRACK_PHONE}`);
-            }
-
-            const isOurTarget = idMatchesPhone || keyMatchesPhone || (TRACKED_LID && id === TRACKED_LID);
-            if (!isOurTarget) return; // Truly not our target
-
-            // Get status from first presence entry (only one in a 1-on-1 chat)
-            let status = null;
-            for (const [, p] of Object.entries(presences)) {
-                status = p.lastKnownPresence;
-                break;
-            }
-            if (!status) return;
-
-            console.log(`[PRESENCE] Target +${TRACK_PHONE} → ${status}`);
-
-            if (status === 'available' || status === 'composing' || status === 'recording') {
-                if (onlineSince === null) {
-                    onlineSince = Date.now();
-                    console.log(`🟢 [ONLINE] +${TRACK_PHONE} went ONLINE at ${new Date(onlineSince).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour12: true })}`);
-                }
-            } else if (status === 'unavailable' || status === 'paused') {
-                if (onlineSince !== null) {
-                    const endMs = Date.now();
-                    console.log(`🔴 [OFFLINE] +${TRACK_PHONE} went OFFLINE at ${new Date(endMs).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour12: true })}`);
-                    writeOnlineSpan(onlineSince, endMs);
-                    onlineSince = null;
+                if (status === 'available' || status === 'composing' || status === 'recording') {
+                    if (onlineSince === null) {
+                        onlineSince = Date.now();
+                        console.log(`\uD83D\uDFE2 [ONLINE] +${TRACK_PHONE} went ONLINE at ${new Date(onlineSince).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour12: true })}`);
+                    }
+                } else if (status === 'unavailable') {
+                    if (onlineSince !== null) {
+                        const endMs = Date.now();
+                        console.log(`\uD83D\uDD34 [OFFLINE] +${TRACK_PHONE} went OFFLINE at ${new Date(endMs).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour12: true })}`);
+                        writeOnlineSpan(onlineSince, endMs);
+                        onlineSince = null;
+                    }
                 }
             }
         } catch(e) { console.error('bot4 presence.update error:', e.message); }
