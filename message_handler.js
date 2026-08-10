@@ -547,6 +547,46 @@ module.exports = {
                }
                return;
            }
+
+           // 📶 Online Presence Logs (.bot4 ologs OR .bot4 ologs 1008)
+           if (subCommand === 'ologs') {
+               let inputDate4 = parts[2];
+               let targetDate4 = '';
+               const fmtO = new Intl.DateTimeFormat('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: '2-digit', year: 'numeric' });
+               const nowO = new Date();
+               const dpO = fmtO.formatToParts(nowO);
+               const cdO = dpO.find(p => p.type === 'day').value;
+               const cmO = dpO.find(p => p.type === 'month').value;
+               const cyO = parseInt(dpO.find(p => p.type === 'year').value, 10);
+               if (inputDate4 && inputDate4.length === 4) {
+                   const dd = inputDate4.slice(0, 2);
+                   const mm = inputDate4.slice(2, 4);
+                   let yr = cyO;
+                   if (parseInt(mm, 10) > parseInt(cmO, 10) || (mm === cmO && parseInt(dd, 10) > parseInt(cdO, 10))) yr = cyO - 1;
+                   targetDate4 = dd + '-' + mm + '-' + yr;
+               } else {
+                   targetDate4 = cdO + '-' + cmO + '-' + cyO;
+               }
+               const ologFile = path.join(__dirname, 'bot4_ologs', targetDate4 + '.json');
+               if (!fs.existsSync(ologFile)) {
+                   return sock.sendMessage(sender, { text: '⚠️ No online activity recorded for +917054406788 on ' + targetDate4 + '.' });
+               }
+               try {
+                   const spans = JSON.parse(fs.readFileSync(ologFile));
+                   if (!spans || spans.length === 0) return sock.sendMessage(sender, { text: '⚠️ Online logs for +917054406788 on ' + targetDate4 + ' are empty.' });
+                   const totalMs = spans.reduce((sum, s) => sum + (s.toMs - s.fromMs), 0);
+                   const totalMin = Math.floor(totalMs / 60000);
+                   const totalSec = Math.round((totalMs % 60000) / 1000);
+                   const totalStr = totalMin > 0 ? (totalMin + 'm ' + totalSec + 's') : (totalSec + 's');
+                   let replyText = '📊 *Online Log — +917054406788*\n📅 *Date: ' + targetDate4 + '*\n🕐 *Total Online: ' + totalStr + '*\n' + '─'.repeat(28) + '\n\n';
+                   spans.forEach((s, i) => { replyText += (i+1) + '. 🟢 ' + s.from + '  →  🔴 ' + s.to + '\n    ⏱ Duration: ' + s.duration + '\n'; });
+                   await sock.sendMessage(sender, { text: replyText.trim() });
+               } catch (e) {
+                   await sock.sendMessage(sender, { text: '❌ Error reading online logs.' });
+               }
+               return;
+           }
+
        }
        // 🟢 NEW BLOCK FOR BOT 3 ENDS HERE 🟢
 
