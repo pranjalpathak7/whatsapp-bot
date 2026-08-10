@@ -101,7 +101,12 @@ async function startBot3() {
         if (connection === 'open') console.log('\n✅ Bot3 is Online and Logging Account 3.\n');
         if (connection === 'close') {
             const reason = u.lastDisconnect?.error?.output?.statusCode || u.lastDisconnect?.error?.message;
-            console.log(`\n❌ Connection Closed. Reason: ${reason}. Reconnecting in 2s...`);
+            if (reason === 401) {
+                console.log("⚠️ Session Invalid (401). Wiping old session data to generate a new QR Code...");
+                fs.rmSync(path.join(__dirname, 'auth_baileys_3'), { recursive: true, force: true });
+            } else {
+                console.log(`\n❌ Connection Closed. Reason: ${reason}. Reconnecting in 2s...`);
+            }
             setTimeout(startBot3, 2000); 
         }
     });

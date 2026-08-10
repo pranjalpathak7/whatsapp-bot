@@ -69,7 +69,11 @@ async function startBot() {
                 console.log('❌ Connection Closed. Reconnecting...');
                 setTimeout(startBot, 2000);
             } else {
-                console.log('🛑 Logged out. Delete auth_baileys and scan again.');
+                console.log('⚠️ Session Invalid (401/loggedOut). Wiping old session data to generate a new QR Code...');
+                const fs = require('fs');
+                const path = require('path');
+                fs.rmSync(path.join(__dirname, 'auth_baileys'), { recursive: true, force: true });
+                setTimeout(startBot, 2000);
             }
         }
     });
