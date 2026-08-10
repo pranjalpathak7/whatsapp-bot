@@ -26,13 +26,13 @@ module.exports = `
             <div class="bg-gradient-to-r from-gray-50 to-indigo-50 border border-indigo-100 rounded-xl p-4 flex items-center justify-between shadow-sm">
                 <div>
                     <div class="flex items-center gap-2">
-                        <span id="toggle-indicator-dot" class="w-3 h-3 rounded-full bg-green-500 animate-pulse"></span>
-                        <span id="toggle-status-title" class="font-bold text-gray-800 text-sm">Scheduler Active (ON)</span>
+                        <span id="toggle-indicator-dot" class="w-3 h-3 rounded-full bg-gray-400 animate-pulse"></span>
+                        <span id="toggle-status-title" class="font-bold text-gray-600 text-sm">Loading Scheduler Status...</span>
                     </div>
-                    <p id="toggle-status-desc" class="text-xs text-gray-500 mt-0.5">Automated messages will be sent on schedule</p>
+                    <p id="toggle-status-desc" class="text-xs text-gray-400 mt-0.5">Please wait</p>
                 </div>
                 <label class="relative inline-flex items-center cursor-pointer">
-                    <input type="checkbox" id="schedulerToggle" checked class="sr-only peer" onchange="toggleScheduler(this)">
+                    <input type="checkbox" id="schedulerToggle" class="sr-only peer" onchange="toggleScheduler(this)">
                     <div class="w-14 h-7 bg-gray-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-green-600 shadow-inner"></div>
                 </label>
             </div>
