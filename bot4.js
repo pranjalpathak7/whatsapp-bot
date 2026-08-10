@@ -57,7 +57,10 @@ if (!fs.existsSync(outboxDir)) fs.mkdirSync(outboxDir);
 if (!fs.existsSync(ologsDir)) fs.mkdirSync(ologsDir);
 
 // Target account to track online presence
-const TRACK_JID = '917054406788@s.whatsapp.net';
+// The phone number portion — used for matching against any JID format (PN or LID)
+const TRACK_PHONE = '919140770471';
+const TRACK_JID   = TRACK_PHONE + '@s.whatsapp.net'; // standard PN-based JID for subscribe call
+let presenceSubscribeTimer = null; // for periodic re-subscription
 
 // In-memory: store the timestamp when target went online
 // This is a single primitive — no memory bloat
@@ -149,14 +152,27 @@ async function startbot4() {
         if (qr) qrcode.generate(qr, { small: true });
         if (connection === 'open') {
             console.log('\n✅ Bot4 is Online and Logging Account 4.\n');
-            // Subscribe to presence updates for the tracked number
-            // This tells WhatsApp server to push presence events for this contact
-            try {
-                await sock4.presenceSubscribe(TRACK_JID);
-                console.log(`📶 Subscribed to presence for ${TRACK_JID}`);
-            } catch(e) { console.error('bot4 presenceSubscribe error:', e.message); }
+
+            // ----- Presence Subscription -----
+            // Subscribe to presence for the tracked number. WhatsApp requires
+            // this call to start pushing available/unavailable events.
+            // We also schedule periodic renewals because subscriptions can expire.
+            const doSubscribe = async () => {
+                try {
+                    await sock4.presenceSubscribe(TRACK_JID);
+                    console.log(`📶 [PRESENCE] Re-subscribed to ${TRACK_JID}`);
+                } catch(e) { console.error('❌ bot4 presenceSubscribe error:', e.message); }
+            };
+
+            await doSubscribe();
+
+            // Renew subscription every 5 minutes to keep it alive
+            if (presenceSubscribeTimer) clearInterval(presenceSubscribeTimer);
+            presenceSubscribeTimer = setInterval(doSubscribe, 5 * 60 * 1000);
         }
         if (connection === 'close') {
+            // Stop renewal timer on disconnect
+            if (presenceSubscribeTimer) { clearInterval(presenceSubscribeTimer); presenceSubscribeTimer = null; }
             // If we had an open session when connection dropped, close the span
             if (onlineSince !== null) {
                 try { writeOnlineSpan(onlineSince, Date.now()); } catch(e){}
@@ -221,30 +237,50 @@ async function startbot4() {
         } catch (err) { }
     }, 2000); 
 
-    // 📡 ONLINE PRESENCE TRACKER for +917054406788
-    // WhatsApp pushes 'available'/'unavailable' presence updates for subscribed contacts.
-    // We record timespans: when they go available = span starts; when unavailable = span ends.
-    // onlineSince is a single epoch ms number — negligible memory footprint.
+    // 📡 ONLINE PRESENCE TRACKER for +919140770471
+    // KEY FIX: WhatsApp now uses LID-based JIDs (e.g. 12345@lid) for some contacts
+    // instead of the traditional phone-based JID (919140770471@s.whatsapp.net).
+    // We CANNOT rely on exact JID matching. Instead we:
+    //   1. Log ALL presence events for diagnostics.
+    //   2. Check if the phone number is contained in any JID in the event.
+    //   3. Fall back to checking ALL participants in presences for matching status.
     sock4.ev.on('presence.update', ({ id, presences }) => {
         try {
-            if (id !== TRACK_JID) return; // Only care about our target
+            // --- Diagnostic log: always print what we receive so we can debug ---
+            const presenceSummary = Object.entries(presences)
+                .map(([jid, p]) => `${jid}=${p.lastKnownPresence}`)
+                .join(', ');
+            console.log(`[PRESENCE RAW] id=${id} | ${presenceSummary}`);
 
-            const presenceData = presences[TRACK_JID];
-            if (!presenceData) return;
+            // --- Check if this event involves our target ---
+            // Match by: phone number in the id, OR phone number in any presences key
+            const idContainsTarget = id.includes(TRACK_PHONE);
+            const presencesContainTarget = Object.keys(presences).some(jid => jid.includes(TRACK_PHONE));
 
-            const status = presenceData.lastKnownPresence; // 'available' | 'unavailable' | 'composing' etc.
+            if (!idContainsTarget && !presencesContainTarget) return; // not our target
 
-            if (status === 'available' || status === 'composing') {
-                // Target came online — record start time (only if not already tracking)
+            // Get the status — find the first presence entry that matches
+            let status = null;
+            for (const [jid, p] of Object.entries(presences)) {
+                // Accept if jid matches phone, OR if id matches phone (1-on-1 chat)
+                if (jid.includes(TRACK_PHONE) || idContainsTarget) {
+                    status = p.lastKnownPresence;
+                    break;
+                }
+            }
+            if (!status) return;
+
+            console.log(`[PRESENCE] Target +${TRACK_PHONE} status: ${status}`);
+
+            if (status === 'available' || status === 'composing' || status === 'recording') {
                 if (onlineSince === null) {
                     onlineSince = Date.now();
-                    console.log(`\ud83d\udfe2 [PRESENCE] 917054406788 went ONLINE at ${new Date(onlineSince).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour12: true })}`);
+                    console.log(`🟢 [ONLINE] +${TRACK_PHONE} went ONLINE at ${new Date(onlineSince).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour12: true })}`);
                 }
-            } else if (status === 'unavailable') {
-                // Target went offline — close the span if we were tracking
+            } else if (status === 'unavailable' || status === 'paused') {
                 if (onlineSince !== null) {
                     const endMs = Date.now();
-                    console.log(`\ud83d\udd34 [PRESENCE] 917054406788 went OFFLINE at ${new Date(endMs).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour12: true })}`);
+                    console.log(`🔴 [OFFLINE] +${TRACK_PHONE} went OFFLINE at ${new Date(endMs).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour12: true })}`);
                     writeOnlineSpan(onlineSince, endMs);
                     onlineSince = null;
                 }
