@@ -21,6 +21,7 @@ module.exports = {
     groupLogs: new Map(),
     busyBuffer: new Map(),
     isBusy: false,
+    erpCookie: "",
 	
     currentPresence: { status: "offline", lastSeen: null },    
     scheduleData: loadJSON(files.schedule, []),

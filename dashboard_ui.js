@@ -72,6 +72,16 @@ module.exports = `
                 <div id="extra-inputs"></div>
             </div>
 
+            <!-- ERP COOKIE SYNC -->
+            <div class="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                <label class="block text-xs font-bold text-blue-600 uppercase mb-2">ERP Cookie Sync (CDC Notice Board)</label>
+                <div class="flex gap-2">
+                    <input type="text" id="erpCookieInput" class="flex-1 p-2 border border-blue-300 rounded-md outline-none focus:ring-1 focus:ring-blue-500 text-sm" placeholder="Paste JSESSIONID=... string here">
+                    <button onclick="syncCookie()" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded transition text-sm">Sync</button>
+                </div>
+                <div id="cookie-status" class="text-xs font-bold mt-2 hidden"></div>
+            </div>
+
             <div class="space-y-4">
                 <label class="block text-xs font-bold text-gray-500 uppercase">Message Content</label>
                 
@@ -336,6 +346,44 @@ module.exports = `
                 alert("❌ Network error while updating scheduler toggle");
                 checkbox.checked = !targetState;
                 updateToggleUI(!targetState);
+            }
+        }
+
+        async function syncCookie() {
+            const pwd = document.getElementById('password').value;
+            const cookieVal = document.getElementById('erpCookieInput').value.trim();
+            const statusDiv = document.getElementById('cookie-status');
+            
+            if (!pwd) {
+                alert("🔒 Please enter the Access Key at the top first!");
+                return;
+            }
+            if (!cookieVal) {
+                alert("Please paste a cookie string.");
+                return;
+            }
+            
+            statusDiv.className = "text-xs font-bold mt-2 text-blue-600 block";
+            statusDiv.innerText = "Syncing...";
+            
+            try {
+                const res = await fetch('/api/update-cookie', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ password: pwd, cookie: cookieVal })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    statusDiv.className = "text-xs font-bold mt-2 text-green-600 block";
+                    statusDiv.innerText = "✅ Cookie synced successfully!";
+                    setTimeout(() => statusDiv.classList.add('hidden'), 5000);
+                } else {
+                    statusDiv.className = "text-xs font-bold mt-2 text-red-600 block";
+                    statusDiv.innerText = "❌ " + (data.error || "Failed to sync");
+                }
+            } catch (err) {
+                statusDiv.className = "text-xs font-bold mt-2 text-red-600 block";
+                statusDiv.innerText = "❌ Network error";
             }
         }
 

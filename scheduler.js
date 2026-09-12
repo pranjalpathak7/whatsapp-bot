@@ -5,6 +5,8 @@ const cron = require('node-cron');
 const db = require('./database');
 const dashboardHTML = require('./dashboard_ui');
 const Groq = require('groq-sdk');
+const axios = require('axios');
+const cdcScraper = require('./cdc_scraper');
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY }); 
 const DASHBOARD_PASSWORD = process.env.DASHBOARD_PASSWORD || "rashi";
@@ -158,6 +160,38 @@ module.exports = {
 	// 🛑 NEW: Serve the current presence state to the dashboard UI
         app.get('/api/presence', (req, res) => {
             res.json(db.currentPresence);
+        });
+
+        // 🛑 NEW: ERP Cookie update endpoint
+        app.post('/api/update-cookie', (req, res) => {
+            try {
+                if (req.body.password !== DASHBOARD_PASSWORD) return res.json({ error: "Wrong Password" });
+                db.erpCookie = req.body.cookie || "";
+                res.json({ success: true });
+            } catch (err) {
+                res.json({ error: "Server error: " + err.message });
+            }
+        });
+
+        // Anti-Timeout Keep-Alive (every 12 minutes)
+        cron.schedule('*/12 * * * *', async () => {
+            if (!db.erpCookie) return;
+            try {
+                await axios.get('https://erp.iitkgp.ac.in/IIT_ERP3/keepAlive.htm', {
+                    headers: {
+                        'Cookie': db.erpCookie,
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36'
+                    }
+                });
+            } catch (error) {} // Log quietly
+        });
+
+        // CDC Scraper (every 5 minutes)
+        cron.schedule('*/5 * * * *', () => {
+            if (db.erpCookie) {
+                cdcScraper.scrapeCDC();
+            }
         });
 
         try { app.listen(PORT, () => console.log(`🌐 Dashboard: Port ${PORT}`)); } catch(e){}
