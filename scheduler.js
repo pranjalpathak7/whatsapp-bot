@@ -187,8 +187,8 @@ module.exports = {
             } catch (error) {} // Log quietly
         });
 
-        // CDC Scraper (every 5 minutes)
-        cron.schedule('*/5 * * * *', () => {
+        // CDC Scraper (every 10 minutes)
+        cron.schedule('*/10 * * * *', () => {
             if (db.erpCookie) {
                 cdcScraper.scrapeCDC();
             }
