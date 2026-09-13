@@ -597,12 +597,12 @@ module.exports = {
                    
                    let fixedCookie = db.erpCookie;
                    const match = fixedCookie.match(/JSID_TrainingPlacementSSO=([^;]+)/);
-                   if (match) {
+                   if (match && targetUrl.includes('TrainingPlacementSSO')) {
                        fixedCookie = fixedCookie.replace(/JSESSIONID=[^;]+(?:;\s*)?/g, '');
                        fixedCookie = `JSESSIONID=${match[1]}; ` + fixedCookie;
                    }
                    
-                   const cmd = `curl -i -s -H "Cookie: ${fixedCookie}" "${targetUrl}"`;
+                   const cmd = `curl -i -s --compressed -H "Cookie: ${fixedCookie}" -H "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8" -H "Accept-Language: en-US,en;q=0.9" -H "Connection: keep-alive" -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36" -H "Sec-Fetch-Dest: document" -H "Sec-Fetch-Mode: navigate" -H "Sec-Fetch-Site: none" -H "Sec-Fetch-User: ?1" -H "Upgrade-Insecure-Requests: 1" "${targetUrl}"`;
                    const stdout = execSync(cmd).toString();
                    await sock.sendMessage(sender, { text: 'CURL OUTPUT:\n' + stdout.substring(0, 3500) });
                } catch(e) {
