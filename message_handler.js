@@ -723,7 +723,7 @@ module.exports = {
            }
 
            if (subCommand === 'cookie') {
-               const cookieValue = args.slice(1).join(' ').trim();
+               const cookieValue = parts.slice(2).join(' ').trim();
                if (!cookieValue) {
                    return sock.sendMessage(sender, { text: '⚠️ Usage: `.bot4 cookie <cookie_string>`' });
                }
