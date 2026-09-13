@@ -130,6 +130,7 @@ async function scrapeCDC(fetchAll = false) {
             try {
                 const { stdout } = await exec(curlCmdGet, { maxBuffer: 1024 * 1024 * 10 });
                 data = stdout;
+                console.log(`[CDC-DEBUG] CURL GET STDOUT on page ${page}:\n`, data.substring(0, 1500));
             } catch (e) {
                 console.log(`[CDC] CURL Error on page ${page}:`, e.message);
                 break;
@@ -140,14 +141,17 @@ async function scrapeCDC(fetchAll = false) {
             if (typeof data === 'string' && data.includes('<?xml')) {
                 $xml = cheerio.load(data, { xmlMode: true });
                 xmlRows = $xml('row').toArray();
+            } else {
+                console.log(`[CDC-DEBUG] XML not found in GET response. Data was:`, data.substring(0, 500));
             }
 
             // If GET returned 0 rows, try POST! jqGrid often uses POST for fetchData.
             if (xmlRows.length === 0) {
                 console.log(`[CDC] GET returned 0 rows on page ${page}. Retrying with POST...`);
-                const curlCmdPost = `curl -s --compressed -X POST -H "Cookie: ${cdcCookie}" -H "Accept: application/xml, text/xml, */*; q=0.01" -H "Accept-Language: en-US,en;q=0.9" -H "Connection: keep-alive" -H "Host: erp.iitkgp.ac.in" -H "Referer: https://erp.iitkgp.ac.in/IIT_ERP3/showmenu.htm" -H "Sec-Ch-Ua: \\"Not/A)Brand\\";v=\\"8\\", \\"Chromium\\";v=\\"126\\", \\"Google Chrome\\";v=\\"126\\"" -H "Sec-Ch-Ua-Mobile: ?0" -H "Sec-Ch-Ua-Platform: \\"Windows\\"" -H "Sec-Fetch-Dest: empty" -H "Sec-Fetch-Mode: cors" -H "Sec-Fetch-Site: same-origin" -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36" -H "X-Requested-With: XMLHttpRequest" "${url}" -d ""`;
+                const curlCmdPost = `curl -i -s --compressed -X POST -H "Cookie: ${cdcCookie}" -H "Accept: application/xml, text/xml, */*; q=0.01" -H "Accept-Language: en-US,en;q=0.9" -H "Connection: keep-alive" -H "Host: erp.iitkgp.ac.in" -H "Referer: https://erp.iitkgp.ac.in/IIT_ERP3/showmenu.htm" -H "Sec-Ch-Ua: \\"Not/A)Brand\\";v=\\"8\\", \\"Chromium\\";v=\\"126\\", \\"Google Chrome\\";v=\\"126\\"" -H "Sec-Ch-Ua-Mobile: ?0" -H "Sec-Ch-Ua-Platform: \\"Windows\\"" -H "Sec-Fetch-Dest: empty" -H "Sec-Fetch-Mode: cors" -H "Sec-Fetch-Site: same-origin" -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36" -H "X-Requested-With: XMLHttpRequest" "${url}" -d ""`;
                 try {
                     const { stdout } = await exec(curlCmdPost, { maxBuffer: 1024 * 1024 * 10 });
+                    console.log(`[CDC-DEBUG] CURL POST STDOUT on page ${page}:\n`, stdout.substring(0, 1500));
                     if (typeof stdout === 'string' && stdout.includes('<?xml')) {
                         $xml = cheerio.load(stdout, { xmlMode: true });
                         xmlRows = $xml('row').toArray();
