@@ -9,8 +9,8 @@ const cdcDataDir = path.join(__dirname, 'cdc_data');
 if (!fs.existsSync(cdcDataDir)) fs.mkdirSync(cdcDataDir);
 
 const HISTORY_FILE = path.join(__dirname, 'cdc_history.json');
-const DRIVE_KEY_FILE = path.join(__dirname, 'drive_key.json');
-const DRIVE_FOLDER_ID = '1h6fC0hZtB8zZ2p1_yP5YI4jP7t8P6q7E'; // Example ID
+const DRIVE_KEY_FILE = path.join(__dirname, 'drive_pass.json');
+const DRIVE_FOLDER_ID = '1Ne1ENfG3xhJ0JMolEb-e4_SlhpMJJNxP';
 
 function loadHistory() {
     try {
@@ -174,8 +174,9 @@ async function scrapeCDC(fetchAll = false) {
                     const cellsArr = $xml(el).find('cell').toArray();
                     if (cellsArr.length >= 8) {
                         const typeStr = $xml(cellsArr[1]).text().trim();
-                        // USER REQUEST 1: Strictly filter for PLACEMENT only, ignore INTERNSHIP immediately to save memory
-                        if (typeStr.toUpperCase() !== 'PLACEMENT') continue;
+                        // USER REQUEST 1: Skip INTERNSHIP notices. 
+                        // We check for INTERNSHIP specifically because ERP might use "JOB" instead of "PLACEMENT"
+                        if (typeStr.toUpperCase() === 'INTERNSHIP') continue;
 
                         elements.push({
                             type: typeStr,
@@ -207,12 +208,9 @@ async function scrapeCDC(fetchAll = false) {
             const company = el.company;
             const updateTime = el.date;
             
-            let noticeDetails = '';
-            // FIX: Robust regex that matches until the href attribute to allow single quotes inside the title
-            const titleMatch = (el.noticeHtml || '').match(/title=['"]([\s\S]*?)['"]\s+(?:href|onclick|style|>)/i);
-            if (titleMatch) noticeDetails = titleMatch[1];
-            else noticeDetails = (el.noticeHtml || '').replace(/<[^>]*>?/gm, '').trim();
-            noticeDetails = noticeDetails.replace(/&amp;/g, '&');
+            // FIX: Just strip all HTML tags to get the pure text. This avoids all single quote regex issues entirely!
+            let noticeDetails = (el.noticeHtml || '').replace(/<[^>]*>?/gm, '').trim();
+            noticeDetails = noticeDetails.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
 
             let downloadLink = '';
             const hrefMatch = (el.attachHtml || '').match(/href=['"]([^'"]*)['"]/i);
