@@ -103,6 +103,9 @@ async function scrapeCDC(fetchAll = false) {
         return { success: false, error: "No ERP Cookie" };
     }
 
+    // USER REQUEST 4: Update the LAST_ACCESS_TIME in the cookie before sending requests so we don't timeout
+    db.erpCookie = db.erpCookie.replace(/LAST_ACCESS_TIME=\d+/, 'LAST_ACCESS_TIME=' + Date.now());
+
     try {
         let elements = [];
         const util = require('util');
@@ -183,13 +186,19 @@ async function scrapeCDC(fetchAll = false) {
                         }
                     }
 
-                    // Dynamically find the attachment cell (usually has TPFile.jsp or similar)
+                    // Dynamically find the attachment cell by strictly looking for TPFile.jsp or a direct .pdf link
                     let attachHtml = '';
                     for (let c = 5; c < cellsArr.length; c++) {
                         const html = $xml(cellsArr[c]).text().trim();
-                        if (html.includes('href=') && (html.includes('TPFile') || html.includes('Upload') || html.includes('download') || html.includes('File'))) {
-                            attachHtml = html;
-                            break;
+                        if (html.includes('href=')) {
+                            const match = html.match(/href=['"]([^'"]*)['"]/i);
+                            if (match) {
+                                const href = match[1];
+                                if (href.includes('TPFile.jsp') || href.toLowerCase().endsWith('.pdf') || href.includes('download')) {
+                                    attachHtml = html;
+                                    break;
+                                }
+                            }
                         }
                     }
 

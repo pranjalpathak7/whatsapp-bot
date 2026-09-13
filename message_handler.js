@@ -739,6 +739,8 @@ module.exports = {
                    return sock.sendMessage(sender, { text: '🔴 ERP Disconnected: No active session cookie in database.' });
                }
                try {
+                   // Keep the cookie fresh by updating the LAST_ACCESS_TIME timestamp dynamically
+                   db.erpCookie = db.erpCookie.replace(/LAST_ACCESS_TIME=\d+/, 'LAST_ACCESS_TIME=' + Date.now());
                    const axios = require('axios');
                    const res1 = await axios.get('https://erp.iitkgp.ac.in/IIT_ERP3/keepAlive.htm', {
                        headers: { 'Cookie': db.erpCookie, 'X-Requested-With': 'XMLHttpRequest' },

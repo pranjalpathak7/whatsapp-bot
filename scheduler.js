@@ -173,17 +173,25 @@ module.exports = {
             }
         });
 
-        // Anti-Timeout Keep-Alive (every 12 minutes)
+        // Anti-Timeout Keep-Alive (every 5 minutes)
         cron.schedule('*/5 * * * *', async () => {
             if (!db.erpCookie) return;
             try {
+                // USER REQUEST 4: Dynamically update LAST_ACCESS_TIME so the server doesn't think we are idle
+                db.erpCookie = db.erpCookie.replace(/LAST_ACCESS_TIME=\d+/, 'LAST_ACCESS_TIME=' + Date.now());
                 const headers = {
                     'Cookie': db.erpCookie,
                     'X-Requested-With': 'XMLHttpRequest',
                     'User-Agent': 'Mozilla/5.0'
                 };
-                await axios.get('https://erp.iitkgp.ac.in/IIT_ERP3/keepAlive.htm', { headers });
+                const res = await axios.get('https://erp.iitkgp.ac.in/IIT_ERP3/keepAlive.htm', { headers });
                 await axios.get('https://erp.iitkgp.ac.in/TrainingPlacementSSO/ERPMonitoring.htm', { headers });
+                // If it returns a logout page, we log it so we know it died.
+                if (res.data && res.data.includes('logoutmsg.htm')) {
+                    console.log('???? [KEEP-ALIVE] Session died. ERP returned logout page.');
+                } else {
+                    console.log('???? [KEEP-ALIVE] Session Extended Successfully!');
+                }
             } catch (error) {} // Log quietly
         });
 
