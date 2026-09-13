@@ -8,7 +8,8 @@ const { google } = require('googleapis');
 const cdcDataDir = path.join(__dirname, 'cdc_data');
 if (!fs.existsSync(cdcDataDir)) fs.mkdirSync(cdcDataDir);
 
-const HISTORY_FILE = path.join(__dirname, 'cdc_history.json');
+// FIX: HISTORY_FILE must be inside cdc_data so the '.bot4 cdc reset' command actually clears it!
+const HISTORY_FILE = path.join(cdcDataDir, 'cdc_history.json');
 const DRIVE_KEY_FILE = path.join(__dirname, 'drive_pass.json');
 const DRIVE_FOLDER_ID = '1Ne1ENfG3xhJ0JMolEb-e4_SlhpMJJNxP';
 
@@ -207,6 +208,9 @@ async function scrapeCDC(fetchAll = false) {
         let processedNotices = 0;
         let newNotices = [];
 
+        let skippedHistory = 0;
+        let skippedEmpty = 0;
+
         for (let i = 0; i < elements.length; i++) {
             if (i % 50 === 0) await new Promise(r => setImmediate(r)); // Yield to event loop to keep WhatsApp connection alive
             
@@ -235,22 +239,32 @@ async function scrapeCDC(fetchAll = false) {
                 downloadLink = 'No Attachment';
             }
 
-            if (company && updateTime) {
-                const uniqueStr = company + updateTime;
+            const safeCompany = company || 'General';
+            if (updateTime) {
+                const uniqueStr = safeCompany + updateTime;
                 const noticeId = Buffer.from(uniqueStr).toString('base64');
 
                 if (!history.includes(noticeId)) {
-                    newNotices.push({ type, subject, company, noticeDetails, updateTime, downloadLink, noticeId });
+                    newNotices.push({ type, subject, company: safeCompany, noticeDetails, updateTime, downloadLink, noticeId });
                     updatedHistory.push(noticeId);
+                } else {
+                    skippedHistory++;
                 }
+            } else {
+                skippedEmpty++;
             }
         }
+        
+        console.log(`[CDC-DEBUG] newNotices.length: ${newNotices.length}, skippedHistory: ${skippedHistory}, skippedEmpty: ${skippedEmpty}`);
 
         const dateMap = {};
 
         for (let notice of newNotices) {
             const ddmm = getDDMM(notice.updateTime);
-            if (!ddmm) continue;
+            if (!ddmm) {
+                console.log(`[CDC-DEBUG] Skipping notice because getDDMM failed for: ${notice.updateTime}`);
+                continue;
+            }
             
             let link = notice.downloadLink;
             // USER REQUEST 2: Download attachment for ALL notices
