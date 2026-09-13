@@ -179,18 +179,35 @@ module.exports = {
             try {
                 // USER REQUEST 4: Dynamically update LAST_ACCESS_TIME so the server doesn't think we are idle
                 db.erpCookie = db.erpCookie.replace(/LAST_ACCESS_TIME=\d+/, 'LAST_ACCESS_TIME=' + Date.now());
-                const headers = {
-                    'Cookie': db.erpCookie,
-                    'X-Requested-With': 'XMLHttpRequest',
-                    'User-Agent': 'Mozilla/5.0'
+                
+                // Helper to swap JSESSIONID for the correct module
+                const getCookieForModule = (cookieStr, moduleName) => {
+                    let newCookie = cookieStr;
+                    const match = newCookie.match(new RegExp(`${moduleName}=([^;]+)`));
+                    if (match) {
+                        newCookie = newCookie.replace(/JSESSIONID=[^;]+(?:;\s*)?/g, '');
+                        newCookie = `JSESSIONID=${match[1]}; ` + newCookie;
+                    }
+                    return newCookie;
                 };
-                const res = await axios.get('https://erp.iitkgp.ac.in/IIT_ERP3/keepAlive.htm', { headers });
-                await axios.get('https://erp.iitkgp.ac.in/TrainingPlacementSSO/ERPMonitoring.htm', { headers });
+
+                const baseHeaders = {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+                    'Connection': 'keep-alive'
+                };
+
+                const erpHeaders = { ...baseHeaders, 'Cookie': getCookieForModule(db.erpCookie, 'JSID_IIT_ERP3'), 'Referer': 'https://erp.iitkgp.ac.in/IIT_ERP3/showmenu.htm' };
+                const res = await axios.get('https://erp.iitkgp.ac.in/IIT_ERP3/keepAlive.htm', { headers: erpHeaders });
+                
+                const cdcHeaders = { ...baseHeaders, 'Cookie': getCookieForModule(db.erpCookie, 'JSID_TrainingPlacementSSO'), 'Referer': 'https://erp.iitkgp.ac.in/TrainingPlacementSSO/ERPMonitoring.htm' };
+                await axios.get('https://erp.iitkgp.ac.in/TrainingPlacementSSO/ERPMonitoring.htm', { headers: cdcHeaders });
+
                 // If it returns a logout page, we log it so we know it died.
                 if (res.data && res.data.includes('logoutmsg.htm')) {
                     console.log('???? [KEEP-ALIVE] Session died. ERP returned logout page.');
                 } else {
-                    console.log('???? [KEEP-ALIVE] Session Extended Successfully!');
+                    console.log('???? [KEEP-ALIVE] Session Extended Successfully for both modules!');
                 }
             } catch (error) {} // Log quietly
         });

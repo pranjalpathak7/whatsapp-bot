@@ -741,15 +741,26 @@ module.exports = {
                try {
                    // Keep the cookie fresh by updating the LAST_ACCESS_TIME timestamp dynamically
                    db.erpCookie = db.erpCookie.replace(/LAST_ACCESS_TIME=\d+/, 'LAST_ACCESS_TIME=' + Date.now());
+                   
+                   const getCookieForModule = (cookieStr, moduleName) => {
+                       let newCookie = cookieStr;
+                       const match = newCookie.match(new RegExp(`${moduleName}=([^;]+)`));
+                       if (match) {
+                           newCookie = newCookie.replace(/JSESSIONID=[^;]+(?:;\s*)?/g, '');
+                           newCookie = `JSESSIONID=${match[1]}; ` + newCookie;
+                       }
+                       return newCookie;
+                   };
+
                    const axios = require('axios');
                    const res1 = await axios.get('https://erp.iitkgp.ac.in/IIT_ERP3/keepAlive.htm', {
-                       headers: { 'Cookie': db.erpCookie, 'X-Requested-With': 'XMLHttpRequest' },
+                       headers: { 'Cookie': getCookieForModule(db.erpCookie, 'JSID_IIT_ERP3'), 'X-Requested-With': 'XMLHttpRequest' },
                        maxRedirects: 0,
                        validateStatus: function (status) { return status >= 200 && status < 400; } 
                    });
                    
                    const res2 = await axios.get('https://erp.iitkgp.ac.in/TrainingPlacementSSO/ERPMonitoring.htm', {
-                       headers: { 'Cookie': db.erpCookie },
+                       headers: { 'Cookie': getCookieForModule(db.erpCookie, 'JSID_TrainingPlacementSSO') },
                        maxRedirects: 0,
                        validateStatus: function (status) { return status >= 200 && status < 400; } 
                    });
