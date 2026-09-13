@@ -124,18 +124,20 @@ async function scrapeCDC(fetchAll = false) {
         const step3Cmd = `curl -s --compressed -H "Cookie: ${cdcCookie}" -H "Accept: application/xml, text/xml, */*; q=0.01" -H "Referer: https://erp.iitkgp.ac.in/TrainingPlacementSSO/ERPMonitoring.htm" -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36" -H "X-Requested-With: XMLHttpRequest" "https://erp.iitkgp.ac.in/TrainingPlacementSSO/ERPMonitoring.htm?action=fetchData&jqqueryid=37&_search=false&nd=${Date.now()}&rows=20&page=1&sidx=&sord=asc&totalrows=50"`;
         try { await exec(step3Cmd, { maxBuffer: 1024 * 1024 * 10 }); } catch (e) { console.log(`[CDC] Step 3 failed:`, e.message); }
 
-        // FIX: The ERP server returns the entire list of notices at once! No pagination needed.
+        // FIX: The ERP server requires GET. POST returns empty.
+        // We fetch a large number of rows (9999) to get all notices in one request.
         console.log(`[CDC] Fetching ALL notices in a single request (rows=9999) without pagination loop...`);
-        const url = `https://erp.iitkgp.ac.in/TrainingPlacementSSO/ERPMonitoring.htm`;
-        const postBody = `action=fetchData&jqqueryid=54&_search=false&rows=9999&page=1&sidx=&sord=asc&nd=${Date.now()}`;
-        const curlCmd = `curl -s --compressed -X POST -H "Cookie: ${cdcCookie}" -H "Accept: application/xml, text/xml, */*; q=0.01" -H "Accept-Language: en-US,en;q=0.9" -H "Connection: keep-alive" -H "Content-Type: application/x-www-form-urlencoded" -H "Host: erp.iitkgp.ac.in" -H "Referer: https://erp.iitkgp.ac.in/IIT_ERP3/showmenu.htm" -H "Sec-Ch-Ua: \\"Not/A)Brand\\";v=\\"8\\", \\"Chromium\\";v=\\"126\\", \\"Google Chrome\\";v=\\"126\\"" -H "Sec-Ch-Ua-Mobile: ?0" -H "Sec-Ch-Ua-Platform: \\"Windows\\"" -H "Sec-Fetch-Dest: empty" -H "Sec-Fetch-Mode: cors" -H "Sec-Fetch-Site: same-origin" -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36" -H "X-Requested-With: XMLHttpRequest" -d "${postBody}" "${url}"`;
+        const url = `https://erp.iitkgp.ac.in/TrainingPlacementSSO/ERPMonitoring.htm?action=fetchData&jqqueryid=54&_search=false&nd=${Date.now()}&rows=20&page=1&sidx=&sord=asc&totalrows=50`;
+        
+        // Use EXACTLY the browser's GET request format
+        const curlCmd = `curl -s --compressed -H "Cookie: ${cdcCookie}" -H "Accept: application/xml, text/xml, */*; q=0.01" -H "Accept-Language: en-US,en;q=0.9" -H "Connection: keep-alive" -H "Host: erp.iitkgp.ac.in" -H "Referer: https://erp.iitkgp.ac.in/TrainingPlacementSSO/ERPMonitoring.htm" -H "Sec-Ch-Ua: \\"Not/A)Brand\\";v=\\"8\\", \\"Chromium\\";v=\\"126\\", \\"Google Chrome\\";v=\\"126\\"" -H "Sec-Ch-Ua-Mobile: ?0" -H "Sec-Ch-Ua-Platform: \\"Windows\\"" -H "Sec-Fetch-Dest: empty" -H "Sec-Fetch-Mode: cors" -H "Sec-Fetch-Site: same-origin" -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36" -H "X-Requested-With: XMLHttpRequest" "${url}"`;
 
         let data = '';
         try {
             // Give it 50MB maxBuffer because 10,000 notices is huge!
             const { stdout } = await exec(curlCmd, { maxBuffer: 1024 * 1024 * 50 });
             data = stdout;
-            console.log(`[CDC-DEBUG] CURL STDOUT length: ${data.length} bytes.\nPreview:\n`, data.substring(0, 1500));
+            console.log(`[CDC-DEBUG] CURL STDOUT length: ${data.length} bytes.\nPreview:\n`, data.substring(0, 500));
         } catch (e) {
             console.log(`[CDC] CURL Error:`, e.message);
             return { success: false, error: e.message };
@@ -158,7 +160,12 @@ async function scrapeCDC(fetchAll = false) {
                 if (cellsArr.length >= 8) {
                     const typeStr = $xml(cellsArr[1]).text().trim();
                     // USER REQUEST 1: Skip INTERNSHIP notices.
-                    if (typeStr.toUpperCase() === 'INTERNSHIP') continue;
+                    if (typeStr.toUpperCase() === 'INTERNSHIP') {
+                        // console.log(`[CDC-DEBUG] Skipping INTERNSHIP`); // Too noisy
+                        continue;
+                    }
+
+                    console.log(`[CDC-DEBUG] FOUND PLACEMENT TYPE: "${typeStr}" | Subject: ${$xml(cellsArr[2]).text().trim()}`);
 
                     elements.push({
                         type: typeStr,
