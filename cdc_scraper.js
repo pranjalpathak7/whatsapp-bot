@@ -127,7 +127,8 @@ async function scrapeCDC(fetchAll = false) {
         // FIX: The ERP server requires GET. POST returns empty.
         // We fetch a large number of rows (9999) to get all notices in one request.
         console.log(`[CDC] Fetching ALL notices in a single request (rows=9999) without pagination loop...`);
-        const url = `https://erp.iitkgp.ac.in/TrainingPlacementSSO/ERPMonitoring.htm?action=fetchData&jqqueryid=54&_search=false&nd=${Date.now()}&rows=20&page=1&sidx=&sord=asc&totalrows=50`;
+        // FIX: The URL MUST contain the exact parameters that jqGrid expects, otherwise the server throws and returns 59 bytes.
+        const url = `https://erp.iitkgp.ac.in/TrainingPlacementSSO/ERPMonitoring.htm?action=fetchData&jqqueryid=54&_search=false&nd=${Date.now()}&rows=9999&page=1&sidx=&sord=asc&totalrows=9999`;
         
         // Use EXACTLY the browser's GET request format
         const curlCmd = `curl -s --compressed -H "Cookie: ${cdcCookie}" -H "Accept: application/xml, text/xml, */*; q=0.01" -H "Accept-Language: en-US,en;q=0.9" -H "Connection: keep-alive" -H "Host: erp.iitkgp.ac.in" -H "Referer: https://erp.iitkgp.ac.in/TrainingPlacementSSO/ERPMonitoring.htm" -H "Sec-Ch-Ua: \\"Not/A)Brand\\";v=\\"8\\", \\"Chromium\\";v=\\"126\\", \\"Google Chrome\\";v=\\"126\\"" -H "Sec-Ch-Ua-Mobile: ?0" -H "Sec-Ch-Ua-Platform: \\"Windows\\"" -H "Sec-Fetch-Dest: empty" -H "Sec-Fetch-Mode: cors" -H "Sec-Fetch-Site: same-origin" -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36" -H "X-Requested-With: XMLHttpRequest" "${url}"`;
