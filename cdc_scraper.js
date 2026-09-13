@@ -157,23 +157,45 @@ async function scrapeCDC(fetchAll = false) {
         if (xmlRows.length > 0 && $xml) {
             for (let el of xmlRows) {
                 const cellsArr = $xml(el).find('cell').toArray();
-                if (cellsArr.length >= 8) {
+                if (cellsArr.length >= 6) {
                     const typeStr = $xml(cellsArr[1]).text().trim();
                     // USER REQUEST 1: Skip INTERNSHIP notices.
                     if (typeStr.toUpperCase() === 'INTERNSHIP') {
-                        // console.log(`[CDC-DEBUG] Skipping INTERNSHIP`); // Too noisy
                         continue;
                     }
 
-                    console.log(`[CDC-DEBUG] FOUND PLACEMENT TYPE: "${typeStr}" | Subject: ${$xml(cellsArr[2]).text().trim()}`);
+                    // Dynamically find the date cell (it could be at index 5 or 6 depending on if there's a Roll Number column)
+                    let dateStr = '';
+                    for (let c = 4; c < cellsArr.length; c++) {
+                        const txt = $xml(cellsArr[c]).text().trim();
+                        if (/(\d{1,2})[-/](\d{1,2})[-/](\d{4})/.test(txt)) {
+                            dateStr = txt;
+                            break;
+                        }
+                    }
+
+                    // Dynamically find the attachment cell (usually has TPFile.jsp or similar)
+                    let attachHtml = '';
+                    for (let c = 5; c < cellsArr.length; c++) {
+                        const html = $xml(cellsArr[c]).text().trim();
+                        if (html.includes('href=') && (html.includes('TPFile') || html.includes('Upload'))) {
+                            attachHtml = html;
+                            break;
+                        } else if (html.includes('href=') && !html.includes('javascript:void(0)')) {
+                            // Fallback if it's a direct link
+                            attachHtml = html;
+                        }
+                    }
+
+                    console.log(`[CDC-DEBUG] FOUND PLACEMENT: "${$xml(cellsArr[2]).text().trim()}" | Date: ${dateStr} | Attach: ${attachHtml ? 'YES' : 'NO'}`);
 
                     elements.push({
                         type: typeStr,
                         subject: $xml(cellsArr[2]).text().trim(),
                         company: $xml(cellsArr[3]).text().trim(),
                         noticeHtml: $xml(cellsArr[4]).text().trim(),
-                        date: $xml(cellsArr[6]).text().trim(),
-                        attachHtml: $xml(cellsArr[8]).text().trim()
+                        date: dateStr,
+                        attachHtml: attachHtml
                     });
                 }
             }
