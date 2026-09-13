@@ -186,8 +186,6 @@ module.exports = {
                 await axios.get('https://erp.iitkgp.ac.in/TrainingPlacementSSO/ERPMonitoring.htm', { headers });
             } catch (error) {} // Log quietly
         });
-            } catch (error) {} // Log quietly
-        });
 
         // CDC Scraper (every 10 minutes)
         cron.schedule('*/10 * * * *', () => {
