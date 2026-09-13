@@ -62,7 +62,14 @@ async function downloadAttachment(url, cookie, noticeId) {
     try {
         let fileName = 'CDC_Notice_' + noticeId + '.pdf';
         const urlName = url.split('/').pop();
-        if (urlName && urlName.includes('.')) fileName = urlName.split('?')[0];
+        if (urlName && urlName.includes('.')) {
+            let extracted = urlName.split('?')[0];
+            // If the endpoint is a JSP servlet, use our unique noticeId and default to PDF
+            if (extracted.toLowerCase().endsWith('.jsp')) {
+                extracted = 'CDC_Notice_' + noticeId + '.pdf';
+            }
+            fileName = extracted;
+        }
 
         const scratchDir = path.join(__dirname, 'scratch');
         if (!fs.existsSync(scratchDir)) fs.mkdirSync(scratchDir);
@@ -180,12 +187,9 @@ async function scrapeCDC(fetchAll = false) {
                     let attachHtml = '';
                     for (let c = 5; c < cellsArr.length; c++) {
                         const html = $xml(cellsArr[c]).text().trim();
-                        if (html.includes('href=') && (html.includes('TPFile') || html.includes('Upload'))) {
+                        if (html.includes('href=') && (html.includes('TPFile') || html.includes('Upload') || html.includes('download') || html.includes('File'))) {
                             attachHtml = html;
                             break;
-                        } else if (html.includes('href=') && !html.includes('javascript:void(0)')) {
-                            // Fallback if it's a direct link
-                            attachHtml = html;
                         }
                     }
 

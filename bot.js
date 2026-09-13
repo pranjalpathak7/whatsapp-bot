@@ -15,6 +15,17 @@ let ghostHeartbeat = null; // 🛑 The heartbeat controller
 // Boot Express Dashboard & Scheduler (Passes the active WhatsApp socket)
 scheduler.start(() => globalSock);
 
+const cdcScraper = require('./cdc_scraper');
+// USER REQUEST 3: Check every 10 minutes automatically for new notices
+setInterval(async () => {
+    try {
+        console.log('[CDC-CRON] Running 10-minute periodic fetch for CDC notices...');
+        await cdcScraper.scrapeCDC(true);
+    } catch (e) {
+        console.error('[CDC-CRON] Periodic fetch error:', e.message);
+    }
+}, 10 * 60 * 1000);
+
 async function startBot() {
     console.log('\n⏳ Booting Modular Architecture...');
     systemVitals.getHealthStats(__dirname); // Clean any zombies on startup
