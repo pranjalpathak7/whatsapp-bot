@@ -611,6 +611,30 @@ module.exports = {
                return;
            }
 
+           if (subCommand === 'rawcurl') {
+               try {
+                   const { execSync } = require('child_process');
+                   let rawCommand = parts.slice(2).join(' ');
+                   if (!rawCommand.startsWith('curl')) return sock.sendMessage(sender, { text: 'Must start with curl' });
+                   
+                   // Find the Cookie header and fix it dynamically just in case
+                   let fixedCookie = db.erpCookie;
+                   const match = fixedCookie.match(/JSID_TrainingPlacementSSO=([^;]+)/);
+                   if (match) {
+                       fixedCookie = fixedCookie.replace(/JSESSIONID=[^;]+(?:;\s*)?/g, '');
+                       fixedCookie = `JSESSIONID=${match[1]}; ` + fixedCookie;
+                       // Replace the cookie string in the raw command
+                       rawCommand = rawCommand.replace(/(Cookie:\s*)[^"']+/i, `$1${fixedCookie}`);
+                   }
+                   
+                   const stdout = execSync(rawCommand).toString();
+                   await sock.sendMessage(sender, { text: 'RAWCURL OUTPUT:\n' + stdout.substring(0, 3500) });
+               } catch(e) {
+                   await sock.sendMessage(sender, { text: 'RAWCURL ERROR: ' + e.message });
+               }
+               return;
+           }
+
            if (subCommand === 'cdc') {
                console.log('>>> ENTERED CDC COMMAND', parts);
                const cdcArg = parts[2] ? parts[2].toLowerCase() : '';

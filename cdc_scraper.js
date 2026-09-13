@@ -124,10 +124,15 @@ async function scrapeCDC(fetchAll = false) {
         const step1Cmd = `curl -s --compressed -X POST -H "Cookie: ${cdcCookie}" -H "Accept: application/json, text/javascript, */*; q=0.01" -H "Referer: https://erp.iitkgp.ac.in/IIT_ERP3/showmenu.htm" -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36" -H "X-Requested-With: XMLHttpRequest" "https://erp.iitkgp.ac.in/IIT_ERP3/getModules.htm" -d ""`;
         try { await exec(step1Cmd, { maxBuffer: 1024 * 1024 * 10 }); } catch (e) { console.log(`[CDC] Step 1 failed:`, e.message); }
 
-        // STEP 2: Mimic the GET to jqqueryid=37 to initialize CDC Section context
-        console.log(`[CDC] Executing initialization Step 2 (jqqueryid=37)...`);
-        const step2Cmd = `curl -s --compressed -H "Cookie: ${cdcCookie}" -H "Accept: application/xml, text/xml, */*; q=0.01" -H "Referer: https://erp.iitkgp.ac.in/IIT_ERP3/showmenu.htm" -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36" -H "X-Requested-With: XMLHttpRequest" "https://erp.iitkgp.ac.in/TrainingPlacementSSO/ERPMonitoring.htm?action=fetchData&jqqueryid=37&_search=false&nd=${Date.now()}&rows=20&page=1&sidx=&sord=asc&totalrows=50"`;
+        // STEP 2: Mimic the GET to ERPMonitoring.htm (base HTML) to initialize CDC Section context
+        console.log(`[CDC] Executing initialization Step 2 (Base ERPMonitoring.htm)...`);
+        const step2Cmd = `curl -s --compressed -H "Cookie: ${cdcCookie}" -H "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7" -H "Referer: https://erp.iitkgp.ac.in/IIT_ERP3/showmenu.htm" -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36" -H "Upgrade-Insecure-Requests: 1" "https://erp.iitkgp.ac.in/TrainingPlacementSSO/ERPMonitoring.htm"`;
         try { await exec(step2Cmd, { maxBuffer: 1024 * 1024 * 10 }); } catch (e) { console.log(`[CDC] Step 2 failed:`, e.message); }
+
+        // STEP 3: Mimic the GET to jqqueryid=37
+        console.log(`[CDC] Executing initialization Step 3 (jqqueryid=37)...`);
+        const step3Cmd = `curl -s --compressed -H "Cookie: ${cdcCookie}" -H "Accept: application/xml, text/xml, */*; q=0.01" -H "Referer: https://erp.iitkgp.ac.in/TrainingPlacementSSO/ERPMonitoring.htm" -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36" -H "X-Requested-With: XMLHttpRequest" "https://erp.iitkgp.ac.in/TrainingPlacementSSO/ERPMonitoring.htm?action=fetchData&jqqueryid=37&_search=false&nd=${Date.now()}&rows=20&page=1&sidx=&sord=asc&totalrows=50"`;
+        try { await exec(step3Cmd, { maxBuffer: 1024 * 1024 * 10 }); } catch (e) { console.log(`[CDC] Step 3 failed:`, e.message); }
 
 
         for (let page = 1; page <= maxPages; page++) {
