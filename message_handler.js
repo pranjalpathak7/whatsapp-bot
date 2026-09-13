@@ -430,80 +430,6 @@ module.exports = {
                }
                return;
            }
-
-           // 🏫 ERP CDC Commands
-           if (subCommand === 'cdc') {
-               const cdcArg = parts[2] ? parts[2].toLowerCase() : '';
-               const cdcScraper = require('./cdc_scraper');
-
-               if (cdcArg === 'fetchall') {
-                   await sock.sendMessage(sender, { text: '⏳ Fetching all historical notices... This may take a minute.' });
-                   const result = await cdcScraper.scrapeCDC(true);
-                   if (result.success) {
-                       return sock.sendMessage(sender, { text: `✅ Bulk fetch complete. Extracted ${result.processed} new historical notices.` });
-                   } else {
-                       return sock.sendMessage(sender, { text: `❌ Fetch failed: ${result.error}` });
-                   }
-               }
-
-               let targetDDMM = cdcArg;
-               if (!targetDDMM || !/^\d{4}$/.test(targetDDMM)) {
-                   const today = new Date();
-                   targetDDMM = String(today.getDate()).padStart(2, '0') + String(today.getMonth() + 1).padStart(2, '0');
-               }
-
-               const path = require('path');
-               const dataFile = path.join(__dirname, 'cdc_data', `${targetDDMM}.json`);
-               if (!fs.existsSync(dataFile)) {
-                   return sock.sendMessage(sender, { text: `⚠️ No CDC notices found for date: ${targetDDMM}` });
-               }
-
-               try {
-                   const notices = JSON.parse(fs.readFileSync(dataFile));
-                   if (notices.length === 0) return sock.sendMessage(sender, { text: `⚠️ No CDC notices found for date: ${targetDDMM}` });
-                   
-                   await sock.sendMessage(sender, { text: `📊 *CDC Notices for ${targetDDMM}* (${notices.length} notices found)` });
-                   
-                   for (const notice of notices) {
-                       const formattedMessage = `*🚨 CDC Notice*\n\n` +
-                           `*🏢 Company:* ${notice.company}\n` +
-                           `*📌 Type:* ${notice.type}\n` +
-                           `*📝 Subject:* ${notice.subject}\n` +
-                           `*🕒 Updated At:* ${notice.updateTime}\n` +
-                           `*💬 Details:* ${notice.noticeDetails}\n\n` +
-                           `*📎 Attachment:* ${notice.downloadLink}`;
-                       
-                       await sock.sendMessage(sender, { text: formattedMessage });
-                       await new Promise(r => setTimeout(r, 1000));
-                   }
-               } catch(e) {
-                   return sock.sendMessage(sender, { text: `❌ Error reading notices: ${e.message}` });
-               }
-               return;
-           }
-
-           // 🌐 ERP Status Command
-           if (subCommand === 'erp') {
-               if (!db.erpCookie) {
-                   return sock.sendMessage(sender, { text: '🔴 ERP Disconnected: No active session cookie in database.' });
-               }
-               try {
-                   const axios = require('axios');
-                   const res = await axios.get('https://erp.iitkgp.ac.in/IIT_ERP3/keepAlive.htm', {
-                       headers: { 'Cookie': db.erpCookie, 'X-Requested-With': 'XMLHttpRequest' },
-                       maxRedirects: 0,
-                       validateStatus: function (status) { return status >= 200 && status < 400; } 
-                   });
-                   
-                   if (res.status === 302) {
-                       return sock.sendMessage(sender, { text: '🔴 ERP Disconnected: Session expired (Redirected to login). Requires a new cookie.' });
-                   } else {
-                       return sock.sendMessage(sender, { text: '🟢 ERP Connected: Session is active and working perfectly.' });
-                   }
-               } catch (e) {
-                   return sock.sendMessage(sender, { text: `🟠 ERP Status Unknown: Network error (${e.message})` });
-               }
-           }
        }
        // 🟢 NEW BLOCK FOR BOT 3 ENDS HERE 🟢
 
@@ -659,6 +585,83 @@ module.exports = {
                    await sock.sendMessage(sender, { text: '❌ Error reading online logs.' });
                }
                return;
+           }
+
+
+           // 🏫 ERP CDC Commands
+           if (subCommand === 'cdc') {
+               console.log('>>> ENTERED CDC COMMAND', parts);
+               const cdcArg = parts[2] ? parts[2].toLowerCase() : '';
+               const cdcScraper = require('./cdc_scraper');
+
+               if (cdcArg === 'fetchall') {
+                   await sock.sendMessage(sender, { text: '⏳ Fetching all historical notices... This may take a minute.' });
+                   const result = await cdcScraper.scrapeCDC(true);
+                   if (result.success) {
+                       return sock.sendMessage(sender, { text: `✅ Bulk fetch complete. Extracted ${result.processed} new historical notices.` });
+                   } else {
+                       return sock.sendMessage(sender, { text: `❌ Fetch failed: ${result.error}` });
+                   }
+               }
+
+               let targetDDMM = cdcArg;
+               if (!targetDDMM || !/^\d{4}$/.test(targetDDMM)) {
+                   const today = new Date();
+                   targetDDMM = String(today.getDate()).padStart(2, '0') + String(today.getMonth() + 1).padStart(2, '0');
+               }
+
+               const path = require('path');
+               const dataFile = path.join(__dirname, 'cdc_data', `${targetDDMM}.json`);
+               if (!fs.existsSync(dataFile)) {
+                   return sock.sendMessage(sender, { text: `⚠️ No CDC notices found for date: ${targetDDMM}` });
+               }
+
+               try {
+                   const notices = JSON.parse(fs.readFileSync(dataFile));
+                   if (notices.length === 0) return sock.sendMessage(sender, { text: `⚠️ No CDC notices found for date: ${targetDDMM}` });
+                   
+                   await sock.sendMessage(sender, { text: `📊 *CDC Notices for ${targetDDMM}* (${notices.length} notices found)` });
+                   
+                   for (const notice of notices) {
+                       const formattedMessage = `*🚨 CDC Notice*\n\n` +
+                           `*🏢 Company:* ${notice.company}\n` +
+                           `*📌 Type:* ${notice.type}\n` +
+                           `*📝 Subject:* ${notice.subject}\n` +
+                           `*🕒 Updated At:* ${notice.updateTime}\n` +
+                           `*💬 Details:* ${notice.noticeDetails}\n\n` +
+                           `*📎 Attachment:* ${notice.downloadLink}`;
+                       
+                       await sock.sendMessage(sender, { text: formattedMessage });
+                       await new Promise(r => setTimeout(r, 1000));
+                   }
+               } catch(e) {
+                   return sock.sendMessage(sender, { text: `❌ Error reading notices: ${e.message}` });
+               }
+               return;
+           }
+
+           // 🌐 ERP Status Command
+           if (subCommand === 'erp') {
+               console.log('>>> ENTERED ERP COMMAND');
+               if (!db.erpCookie) {
+                   return sock.sendMessage(sender, { text: '🔴 ERP Disconnected: No active session cookie in database.' });
+               }
+               try {
+                   const axios = require('axios');
+                   const res = await axios.get('https://erp.iitkgp.ac.in/IIT_ERP3/keepAlive.htm', {
+                       headers: { 'Cookie': db.erpCookie, 'X-Requested-With': 'XMLHttpRequest' },
+                       maxRedirects: 0,
+                       validateStatus: function (status) { return status >= 200 && status < 400; } 
+                   });
+                   
+                   if (res.status === 302) {
+                       return sock.sendMessage(sender, { text: '🔴 ERP Disconnected: Session expired (Redirected to login). Requires a new cookie.' });
+                   } else {
+                       return sock.sendMessage(sender, { text: '🟢 ERP Connected: Session is active and working perfectly.' });
+                   }
+               } catch (e) {
+                   return sock.sendMessage(sender, { text: `🟠 ERP Status Unknown: Network error (${e.message})` });
+               }
            }
 
        }
