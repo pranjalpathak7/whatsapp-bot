@@ -108,51 +108,25 @@ async function scrapeCDC(fetchAll = false) {
         const rows = fetchAll ? 2000 : 50; 
         const url = `https://erp.iitkgp.ac.in/TrainingPlacementSSO/ERPMonitoring.htm?action=fetchData&jqqueryid=54&_search=false&rows=${rows}&page=1&sidx=&sord=asc&totalrows=${rows}&nd=${Date.now()}`;
         
-        console.log("[CDC] Fetching notices with perfect headers...");
-        const response = await axios.get(url, {
-            headers: { 
-                'Accept': 'application/xml, text/xml, */*; q=0.01',
-                'Accept-Encoding': 'gzip, deflate, br, zstd',
-                'Accept-Language': 'en-US,en;q=0.9',
-                'Connection': 'keep-alive',
-                'Cookie': db.erpCookie, 
-                'Host': 'erp.iitkgp.ac.in',
-                'Referer': 'https://erp.iitkgp.ac.in/TrainingPlacementSSO/ERPMonitoring.htm',
-                'Sec-Ch-Ua': '"Not/A)Brand";v="8", "Chromium";v="126", "Google Chrome";v="126"',
-                'Sec-Ch-Ua-Mobile': '?0',
-                'Sec-Ch-Ua-Platform': '"Windows"',
-                'Sec-Fetch-Dest': 'empty',
-                'Sec-Fetch-Mode': 'cors',
-                'Sec-Fetch-Site': 'same-origin',
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
-                'X-Requested-With': 'XMLHttpRequest' 
-            },
-            timeout: 15000,
-            validateStatus: () => true
-        });
+        console.log("[CDC] Fetching notices with perfect headers via CURL...");
+        
+        const util = require('util');
+        const exec = util.promisify(require('child_process').exec);
+        
+        const curlCmd = `curl -s -H "Cookie: ${db.erpCookie}" -H "Accept: application/xml, text/xml, */*; q=0.01" -H "Accept-Language: en-US,en;q=0.9" -H "Connection: keep-alive" -H "Host: erp.iitkgp.ac.in" -H "Referer: https://erp.iitkgp.ac.in/TrainingPlacementSSO/ERPMonitoring.htm" -H "Sec-Ch-Ua: \\"Not/A)Brand\\";v=\\"8\\", \\"Chromium\\";v=\\"126\\", \\"Google Chrome\\";v=\\"126\\"" -H "Sec-Ch-Ua-Mobile: ?0" -H "Sec-Ch-Ua-Platform: \\"Windows\\"" -H "Sec-Fetch-Dest: empty" -H "Sec-Fetch-Mode: cors" -H "Sec-Fetch-Site: same-origin" -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36" -H "X-Requested-With: XMLHttpRequest" "${url}"`;
 
-        if (response.status !== 200) {
-            console.log('[CDC] ERP returned non-200 status:', response.status);
-            return { success: false, error: 'HTTP Status ' + response.status };
+        let data = '';
+        try {
+            const { stdout } = await exec(curlCmd, { maxBuffer: 1024 * 1024 * 10 });
+            data = stdout;
+        } catch (e) {
+            console.log('[CDC] CURL Error:', e.message);
+            return { success: false, error: 'CURL Request Failed' };
         }
 
-        const data = response.data;
         let elements = [];
         
-        if (typeof data === 'object' && data.rows) {
-            const jsonRows = Array.isArray(data.rows) ? data.rows : [];
-            for (let r of jsonRows) {
-                if (!r.cell || r.cell.length < 6) continue;
-                elements.push({
-                    type: r.cell[0] || '',
-                    subject: r.cell[1] || '',
-                    company: r.cell[2] || '',
-                    noticeHtml: r.cell[3] || '',
-                    date: r.cell[4] || '',
-                    attachHtml: r.cell[5] || ''
-                });
-            }
-        } else if (typeof data === 'string') {
+        if (typeof data === 'string' && data.includes('<?xml')) {
             const $ = cheerio.load(data, { xmlMode: true });
             const xmlRows = $('row').toArray();
             console.log(`[CDC] Parsed XML, found ${xmlRows.length} rows.`);
