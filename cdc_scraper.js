@@ -300,7 +300,7 @@ async function scrapeCDC(fetchAll = false) {
         }
 
         saveHistory(updatedHistory);
-        return { success: true, processed: processedNotices };
+        return { success: true, processed: processedNotices, newNotices: newNotices };
 
     } catch (error) {
         console.error("CDC Scraper Error:", error.message);
