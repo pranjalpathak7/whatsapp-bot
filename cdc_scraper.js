@@ -203,18 +203,24 @@ async function scrapeCDC(fetchAll = false) {
         let processedNotices = 0;
         let newNotices = [];
 
-        for (let el of elements) {
+        for (let i = 0; i < elements.length; i++) {
+            if (i % 50 === 0) await new Promise(r => setImmediate(r)); // Yield to event loop to keep WhatsApp connection alive
+            
+            const el = elements[i];
             const type = el.type;
             const subject = el.subject;
             const company = el.company;
             const updateTime = el.date;
             
-            const noticeCheerio = cheerio.load(el.noticeHtml || '');
-            let noticeDetails = noticeCheerio('a').attr('title');
-            if (!noticeDetails) noticeDetails = (el.noticeHtml || '').replace(/<[^>]*>?/gm, '').trim();
+            let noticeDetails = '';
+            const titleMatch = (el.noticeHtml || '').match(/title=['"]([^'"]*)['"]/i);
+            if (titleMatch) noticeDetails = titleMatch[1];
+            else noticeDetails = (el.noticeHtml || '').replace(/<[^>]*>?/gm, '').trim();
 
-            const attachCheerio = cheerio.load(el.attachHtml || '');
-            let downloadLink = attachCheerio('a').attr('href');
+            let downloadLink = '';
+            const hrefMatch = (el.attachHtml || '').match(/href=['"]([^'"]*)['"]/i);
+            if (hrefMatch) downloadLink = hrefMatch[1];
+            if (downloadLink === 'javascript:void(0);') downloadLink = '';
             
             if (downloadLink) {
                 if (downloadLink.startsWith('/')) {
