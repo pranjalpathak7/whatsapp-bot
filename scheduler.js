@@ -174,16 +174,18 @@ module.exports = {
         });
 
         // Anti-Timeout Keep-Alive (every 12 minutes)
-        cron.schedule('*/12 * * * *', async () => {
+        cron.schedule('*/5 * * * *', async () => {
             if (!db.erpCookie) return;
             try {
-                await axios.get('https://erp.iitkgp.ac.in/IIT_ERP3/keepAlive.htm', {
-                    headers: {
-                        'Cookie': db.erpCookie,
-                        'X-Requested-With': 'XMLHttpRequest',
-                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36'
-                    }
-                });
+                const headers = {
+                    'Cookie': db.erpCookie,
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'User-Agent': 'Mozilla/5.0'
+                };
+                await axios.get('https://erp.iitkgp.ac.in/IIT_ERP3/keepAlive.htm', { headers });
+                await axios.get('https://erp.iitkgp.ac.in/TrainingPlacementSSO/ERPMonitoring.htm', { headers });
+            } catch (error) {} // Log quietly
+        });
             } catch (error) {} // Log quietly
         });
 

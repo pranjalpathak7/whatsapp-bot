@@ -111,67 +111,116 @@ async function scrapeCDC(fetchAll = false) {
             headers: { 'Cookie': db.erpCookie, 'X-Requested-With': 'XMLHttpRequest', 'Accept': '*/*' }
         });
 
-        const html = response.data;
-        const $ = cheerio.load(html);
+        const data = response.data;
+        let elements = [];
+        
+        if (typeof data === 'object' && data.rows) {
+            const jsonRows = Array.isArray(data.rows) ? data.rows : [];
+            for (let r of jsonRows) {
+                if (!r.cell || r.cell.length < 6) continue;
+                elements.push({
+                    type: r.cell[0] || '',
+                    subject: r.cell[1] || '',
+                    company: r.cell[2] || '',
+                    noticeHtml: r.cell[3] || '',
+                    date: r.cell[4] || '',
+                    attachHtml: r.cell[5] || ''
+                });
+            }
+        } else {
+            const $ = cheerio.load(data, { xmlMode: true });
+            const xmlRows = $('row').toArray();
+            if (xmlRows.length > 0) {
+                for (let el of xmlRows) {
+                    const cells = $(el).find('cell');
+                    if (cells.length >= 6) {
+                        elements.push({
+                            type: cells.eq(0).text().trim(),
+                            subject: cells.eq(1).text().trim(),
+                            company: cells.eq(2).text().trim(),
+                            noticeHtml: cells.eq(3).text().trim(),
+                            date: cells.eq(4).text().trim(),
+                            attachHtml: cells.eq(5).text().trim()
+                        });
+                    }
+                }
+            } else {
+                const htmlRows = $('tr').toArray();
+                for (let el of htmlRows) {
+                    elements.push({
+                        type: $(el).find('td[aria-describedby="grid54_type"]').text().trim(),
+                        subject: $(el).find('td[aria-describedby="grid54_category"]').text().trim(),
+                        company: $(el).find('td[aria-describedby="grid54_company"]').text().trim(),
+                        noticeHtml: $(el).find('td[aria-describedby="grid54_notice"]').html() || '',
+                        date: $(el).find('td[aria-describedby="grid54_noticeat"]').text().trim(),
+                        attachHtml: $(el).find('td[aria-describedby="grid54_view1"]').html() || ''
+                    });
+                }
+            }
+        }
         
         let history = loadHistory();
         let updatedHistory = [...history];
         let processedNotices = 0;
-
-        const elements = $('tr').toArray();
+        let newNotices = [];
 
         for (let el of elements) {
-            const type = $(el).find('td[aria-describedby="grid54_type"]').text().trim();
-            const subject = $(el).find('td[aria-describedby="grid54_category"]').text().trim();
-            const company = $(el).find('td[aria-describedby="grid54_company"]').text().trim();
+            const type = el.type;
+            const subject = el.subject;
+            const company = el.company;
+            const updateTime = el.date;
             
-            const noticeLink = $(el).find('td[aria-describedby="grid54_notice"] a');
-            const noticeDetails = noticeLink.attr('title') ? noticeLink.attr('title').trim() : '';
-            
-            const updateTime = $(el).find('td[aria-describedby="grid54_noticeat"]').text().trim();
-            let downloadLink = $(el).find('td[aria-describedby="grid54_view1"] a').attr('href');
+            const noticeCheerio = cheerio.load(el.noticeHtml || '');
+            let noticeDetails = noticeCheerio('a').attr('title');
+            if (!noticeDetails) noticeDetails = (el.noticeHtml || '').replace(/<[^>]*>?/gm, '').trim();
+
+            const attachCheerio = cheerio.load(el.attachHtml || '');
+            let downloadLink = attachCheerio('a').attr('href');
             
             if (downloadLink) {
-                if (downloadLink.startsWith('/')) downloadLink = 'https://erp.iitkgp.ac.in' + downloadLink;
-            } else { downloadLink = 'No Attachment'; }
+                if (downloadLink.startsWith('/')) {
+                    downloadLink = 'https://erp.iitkgp.ac.in' + downloadLink;
+                }
+            } else {
+                downloadLink = 'No Attachment';
+            }
 
             if (company && updateTime) {
                 const uniqueStr = company + updateTime;
                 const noticeId = Buffer.from(uniqueStr).toString('base64');
-                const safeId = noticeId.substring(0, 8).replace(/[\/\+\=]/g, '0');
-                const ddmm = getDDMM(updateTime);
-
-                if (!ddmm) continue; 
 
                 if (!history.includes(noticeId)) {
-                    let finalAttachmentLink = downloadLink;
-                    
-                    // Only perform expensive Drive upload for new cron notices, not for bulk historical fetch 
-                    // (prevents RAM/Rate limit crash for 2000 files)
-                    if (!fetchAll) {
-                        finalAttachmentLink = await downloadAttachment(downloadLink, db.erpCookie, safeId);
-                    }
-
-                    const noticeObj = { type, subject, company, noticeDetails, updateTime, downloadLink: finalAttachmentLink };
-                    
-                    const dateFile = path.join(cdcDataDir, `${ddmm}.json`);
-                    let dateData = [];
-                    if (fs.existsSync(dateFile)) {
-                        try { dateData = JSON.parse(fs.readFileSync(dateFile, 'utf8')); } catch(e){}
-                    }
-                    
-                    // Add to top of array for newest first
-                    dateData.unshift(noticeObj);
-                    fs.writeFileSync(dateFile, JSON.stringify(dateData, null, 2));
-
+                    newNotices.push({ type, subject, company, noticeDetails, updateTime, downloadLink, noticeId });
                     updatedHistory.push(noticeId);
-                    processedNotices++;
                 }
             }
         }
 
-        if (processedNotices > 0) saveHistory(updatedHistory);
-        console.log(`[CDC Scraper] Processed ${processedNotices} new notices.`);
+        const dateMap = {};
+
+        for (let notice of newNotices) {
+            const ddmm = getDDMM(notice.updateTime);
+            if (!ddmm) continue;
+            
+            let link = notice.downloadLink;
+            if (!fetchAll && link !== 'No Attachment') {
+                link = await downloadAttachment(link, db.erpCookie, notice.noticeId);
+            }
+            notice.downloadLink = link;
+
+            if (!dateMap[ddmm]) {
+                const df = path.join(cdcDataDir, `${ddmm}.json`);
+                dateMap[ddmm] = fs.existsSync(df) ? JSON.parse(fs.readFileSync(df)) : [];
+            }
+            dateMap[ddmm].push(notice);
+            processedNotices++;
+        }
+
+        for (const [ddmm, notices] of Object.entries(dateMap)) {
+            fs.writeFileSync(path.join(cdcDataDir, `${ddmm}.json`), JSON.stringify(notices, null, 2));
+        }
+
+        saveHistory(updatedHistory);
         return { success: true, processed: processedNotices };
 
     } catch (error) {

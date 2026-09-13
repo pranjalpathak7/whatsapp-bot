@@ -594,6 +594,20 @@ module.exports = {
                const cdcArg = parts[2] ? parts[2].toLowerCase() : '';
                const cdcScraper = require('./cdc_scraper');
 
+               
+               if (cdcArg === 'debug') {
+                   try {
+                       const axios = require('axios');
+                       const url = 'https://erp.iitkgp.ac.in/TrainingPlacementSSO/ERPMonitoring.htm?action=fetchData&jqqueryid=54&_search=false&rows=5&page=1&sidx=&sord=asc&totalrows=5&nd=' + Date.now();
+                       const res = await axios.get(url, { headers: { 'Cookie': db.erpCookie, 'X-Requested-With': 'XMLHttpRequest' }});
+                       const dataStr = typeof res.data === 'string' ? res.data : JSON.stringify(res.data, null, 2);
+                       await sock.sendMessage(sender, { text: 'DEBUG RESPONSE:\n' + dataStr.substring(0, 3000) });
+                   } catch(e) {
+                       await sock.sendMessage(sender, { text: 'DEBUG ERROR: ' + e.message });
+                   }
+                   return;
+               }
+
                if (cdcArg === 'fetchall') {
                    await sock.sendMessage(sender, { text: '⏳ Fetching all historical notices... This may take a minute.' });
                    const result = await cdcScraper.scrapeCDC(true);
