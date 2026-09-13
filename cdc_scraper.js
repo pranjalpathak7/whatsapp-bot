@@ -119,8 +119,19 @@ async function scrapeCDC(fetchAll = false) {
             cdcCookie = `JSESSIONID=${match[1]}; ` + cdcCookie;
         }
 
+        // STEP 1: Mimic the POST to getModules.htm to initialize ERP context
+        console.log(`[CDC] Executing initialization Step 1 (getModules.htm)...`);
+        const step1Cmd = `curl -s --compressed -X POST -H "Cookie: ${cdcCookie}" -H "Accept: application/json, text/javascript, */*; q=0.01" -H "Referer: https://erp.iitkgp.ac.in/IIT_ERP3/showmenu.htm" -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36" -H "X-Requested-With: XMLHttpRequest" "https://erp.iitkgp.ac.in/IIT_ERP3/getModules.htm" -d ""`;
+        try { await exec(step1Cmd, { maxBuffer: 1024 * 1024 * 10 }); } catch (e) { console.log(`[CDC] Step 1 failed:`, e.message); }
+
+        // STEP 2: Mimic the GET to jqqueryid=37 to initialize CDC Section context
+        console.log(`[CDC] Executing initialization Step 2 (jqqueryid=37)...`);
+        const step2Cmd = `curl -s --compressed -H "Cookie: ${cdcCookie}" -H "Accept: application/xml, text/xml, */*; q=0.01" -H "Referer: https://erp.iitkgp.ac.in/IIT_ERP3/showmenu.htm" -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36" -H "X-Requested-With: XMLHttpRequest" "https://erp.iitkgp.ac.in/TrainingPlacementSSO/ERPMonitoring.htm?action=fetchData&jqqueryid=37&_search=false&nd=${Date.now()}&rows=20&page=1&sidx=&sord=asc&totalrows=50"`;
+        try { await exec(step2Cmd, { maxBuffer: 1024 * 1024 * 10 }); } catch (e) { console.log(`[CDC] Step 2 failed:`, e.message); }
+
+
         for (let page = 1; page <= maxPages; page++) {
-            console.log(`[CDC] Fetching page ${page} with perfect headers via CURL...`);
+            console.log(`[CDC] Fetching page ${page} (jqqueryid=54) with perfect headers via CURL...`);
             
             const url = `https://erp.iitkgp.ac.in/TrainingPlacementSSO/ERPMonitoring.htm?action=fetchData&jqqueryid=54&_search=false&rows=20&page=${page}&sidx=&sord=asc&totalrows=50&nd=${Date.now()}`;
             // GET request with Referer set to showmenu.htm
