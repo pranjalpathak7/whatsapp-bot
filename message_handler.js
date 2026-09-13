@@ -654,6 +654,19 @@ module.exports = {
                    return;
                }
 
+               if (cdcArg === 'reset') {
+                   const fs = require('fs');
+                   const path = require('path');
+                   const historyPath = path.join(__dirname, 'cdc_data', 'cdc_history.json');
+                   if (fs.existsSync(historyPath)) {
+                       fs.writeFileSync(historyPath, '[]');
+                       await sock.sendMessage(sender, { text: '🗑️ CDC history cleared! Running `.bot4 cdc fetchall` now will fetch everything as fresh notices.' });
+                   } else {
+                       await sock.sendMessage(sender, { text: '⚠️ No CDC history found to clear.' });
+                   }
+                   return;
+               }
+
                if (cdcArg === 'fetchall') {
                    await sock.sendMessage(sender, { text: '⏳ Fetching all historical notices... This may take a minute.' });
                    const result = await cdcScraper.scrapeCDC(true);
@@ -680,15 +693,15 @@ module.exports = {
                    const notices = JSON.parse(fs.readFileSync(dataFile));
                    if (notices.length === 0) return sock.sendMessage(sender, { text: `⚠️ No CDC notices found for date: ${targetDDMM}` });
                    
-                   await sock.sendMessage(sender, { text: `📊 *CDC Notices for ${targetDDMM}* (${notices.length} notices found)` });
+                   const fullDate = notices[0] && notices[0].updateTime ? notices[0].updateTime.split(' ')[0] : targetDDMM;
+                   await sock.sendMessage(sender, { text: `📅 *CDC Notices for ${fullDate}* (${notices.length} notices found)` });
                    
                    for (const notice of notices) {
-                       const formattedMessage = `*🚨 CDC Notice*\n\n` +
-                           `*🏢 Company:* ${notice.company}\n` +
-                           `*📌 Type:* ${notice.type}\n` +
-                           `*📝 Subject:* ${notice.subject}\n` +
+                       const formattedMessage = `*🏢 Company:* ${notice.company}\n` +
+                           `*💼 Type:* ${notice.type}\n` +
+                           `*📌 Subject:* ${notice.subject}\n` +
                            `*🕒 Updated At:* ${notice.updateTime}\n` +
-                           `*💬 Details:* ${notice.noticeDetails}\n\n` +
+                           `*📝 Details:* ${notice.noticeDetails}\n\n` +
                            `*📎 Attachment:* ${notice.downloadLink}`;
                        
                        await sock.sendMessage(sender, { text: formattedMessage });

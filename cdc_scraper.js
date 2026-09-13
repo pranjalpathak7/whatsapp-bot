@@ -59,34 +59,25 @@ async function uploadCDCToDrive(filePath, fileName) {
 async function downloadAttachment(url, cookie, noticeId) {
     if (url === 'No Attachment' || !url.startsWith('http')) return url;
     try {
-        const response = await axios({
-            url, method: 'GET', responseType: 'stream',
-            headers: { 
-                'Cookie': cookie, 
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36' 
-            }
-        });
-        
         let fileName = 'CDC_Notice_' + noticeId + '.pdf';
-        const disposition = response.headers['content-disposition'];
-        if (disposition && disposition.includes('filename=')) {
-            fileName = disposition.split('filename=')[1].replace(/["']/g, '');
-        } else {
-            const urlName = url.split('/').pop();
-            if (urlName && urlName.includes('.')) fileName = urlName.split('?')[0];
-        }
+        const urlName = url.split('/').pop();
+        if (urlName && urlName.includes('.')) fileName = urlName.split('?')[0];
 
         const scratchDir = path.join(__dirname, 'scratch');
         if (!fs.existsSync(scratchDir)) fs.mkdirSync(scratchDir);
-        
         const tempPath = path.join(scratchDir, fileName);
-        const writer = fs.createWriteStream(tempPath);
-        response.data.pipe(writer);
 
-        await new Promise((resolve, reject) => {
-            writer.on('finish', resolve);
-            writer.on('error', reject);
-        });
+        const curlCmd = `curl -sL --compressed -H "Cookie: ${cookie}" -H "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8" -H "Connection: keep-alive" -H "Referer: https://erp.iitkgp.ac.in/TrainingPlacementSSO/ERPMonitoring.htm" -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36" -o "${tempPath}" "${url}"`;
+        
+        const util = require('util');
+        const exec = util.promisify(require('child_process').exec);
+        await exec(curlCmd, { maxBuffer: 1024 * 1024 * 50 }); // up to 50mb
+
+        if (!fs.existsSync(tempPath) || fs.statSync(tempPath).size === 0) {
+            console.log(`[CDC] Download failed or empty file for ${url}`);
+            if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+            return url;
+        }
 
         const driveLink = await uploadCDCToDrive(tempPath, fileName);
         if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
@@ -212,6 +203,9 @@ async function scrapeCDC(fetchAll = false) {
             const company = el.company;
             const updateTime = el.date;
             
+            // USER REQUEST 1: Only fetch PLACEMENT notices, skip INTERNSHIP
+            if (type && type.toUpperCase() !== 'PLACEMENT') continue;
+            
             let noticeDetails = '';
             const titleMatch = (el.noticeHtml || '').match(/title=['"]([^'"]*)['"]/i);
             if (titleMatch) noticeDetails = titleMatch[1];
@@ -250,8 +244,10 @@ async function scrapeCDC(fetchAll = false) {
             if (!ddmm) continue;
             
             let link = notice.downloadLink;
-            if (!fetchAll && link !== 'No Attachment') {
-                link = await downloadAttachment(link, db.erpCookie, notice.noticeId);
+            // USER REQUEST 2: Download attachment for ALL notices
+            if (link !== 'No Attachment') {
+                console.log(`[CDC] Uploading attachment to Drive for notice ${notice.noticeId}...`);
+                link = await downloadAttachment(link, cdcCookie, notice.noticeId);
             }
             notice.downloadLink = link;
 
