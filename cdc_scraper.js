@@ -124,61 +124,51 @@ async function scrapeCDC(fetchAll = false) {
         const step3Cmd = `curl -s --compressed -H "Cookie: ${cdcCookie}" -H "Accept: application/xml, text/xml, */*; q=0.01" -H "Referer: https://erp.iitkgp.ac.in/TrainingPlacementSSO/ERPMonitoring.htm" -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36" -H "X-Requested-With: XMLHttpRequest" "https://erp.iitkgp.ac.in/TrainingPlacementSSO/ERPMonitoring.htm?action=fetchData&jqqueryid=37&_search=false&nd=${Date.now()}&rows=20&page=1&sidx=&sord=asc&totalrows=50"`;
         try { await exec(step3Cmd, { maxBuffer: 1024 * 1024 * 10 }); } catch (e) { console.log(`[CDC] Step 3 failed:`, e.message); }
 
-        // FIX: The ERP server's jqGrid completely ignores pagination parameters via GET URL.
-        // We MUST use POST with `application/x-www-form-urlencoded` body to successfully fetch page 2, 3, etc.
-        const maxPages = fetchAll ? 100 : 3; 
+        // FIX: The ERP server returns the entire list of notices at once! No pagination needed.
+        console.log(`[CDC] Fetching ALL notices in a single request (rows=9999) without pagination loop...`);
+        const url = `https://erp.iitkgp.ac.in/TrainingPlacementSSO/ERPMonitoring.htm`;
+        const postBody = `action=fetchData&jqqueryid=54&_search=false&rows=9999&page=1&sidx=&sord=asc&nd=${Date.now()}`;
+        const curlCmd = `curl -s --compressed -X POST -H "Cookie: ${cdcCookie}" -H "Accept: application/xml, text/xml, */*; q=0.01" -H "Accept-Language: en-US,en;q=0.9" -H "Connection: keep-alive" -H "Content-Type: application/x-www-form-urlencoded" -H "Host: erp.iitkgp.ac.in" -H "Referer: https://erp.iitkgp.ac.in/IIT_ERP3/showmenu.htm" -H "Sec-Ch-Ua: \\"Not/A)Brand\\";v=\\"8\\", \\"Chromium\\";v=\\"126\\", \\"Google Chrome\\";v=\\"126\\"" -H "Sec-Ch-Ua-Mobile: ?0" -H "Sec-Ch-Ua-Platform: \\"Windows\\"" -H "Sec-Fetch-Dest: empty" -H "Sec-Fetch-Mode: cors" -H "Sec-Fetch-Site: same-origin" -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36" -H "X-Requested-With: XMLHttpRequest" -d "${postBody}" "${url}"`;
 
-        for (let page = 1; page <= maxPages; page++) {
-            console.log(`[CDC] Fetching page ${page} (jqqueryid=54) with perfect POST headers via CURL...`);
-            
-            const url = `https://erp.iitkgp.ac.in/TrainingPlacementSSO/ERPMonitoring.htm`;
-            const postBody = `action=fetchData&jqqueryid=54&_search=false&rows=20&page=${page}&sidx=&sord=asc&nd=${Date.now()}`;
-            
-            const curlCmd = `curl -s --compressed -X POST -H "Cookie: ${cdcCookie}" -H "Accept: application/xml, text/xml, */*; q=0.01" -H "Accept-Language: en-US,en;q=0.9" -H "Connection: keep-alive" -H "Content-Type: application/x-www-form-urlencoded" -H "Host: erp.iitkgp.ac.in" -H "Referer: https://erp.iitkgp.ac.in/IIT_ERP3/showmenu.htm" -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36" -H "X-Requested-With: XMLHttpRequest" -d "${postBody}" "${url}"`;
+        let data = '';
+        try {
+            // Give it 50MB maxBuffer because 10,000 notices is huge!
+            const { stdout } = await exec(curlCmd, { maxBuffer: 1024 * 1024 * 50 });
+            data = stdout;
+            console.log(`[CDC-DEBUG] CURL STDOUT length: ${data.length} bytes.\nPreview:\n`, data.substring(0, 1500));
+        } catch (e) {
+            console.log(`[CDC] CURL Error:`, e.message);
+            return { success: false, error: e.message };
+        }
 
-            let data = '';
-            try {
-                const { stdout } = await exec(curlCmd, { maxBuffer: 1024 * 1024 * 10 });
-                data = stdout;
-                console.log(`[CDC-DEBUG] CURL POST STDOUT on page ${page}:\n`, data.substring(0, 1500));
-            } catch (e) {
-                console.log(`[CDC] CURL Error on page ${page}:`, e.message);
-                break;
-            }
+        let xmlRows = [];
+        let $xml = null;
+        if (typeof data === 'string' && data.includes('<?xml')) {
+            $xml = cheerio.load(data, { xmlMode: true });
+            xmlRows = $xml('row').toArray();
+            console.log(`[CDC] Parsed XML, found ${xmlRows.length} rows.`);
+        } else {
+            console.log(`[CDC-DEBUG] XML not found in response. Data was:`, data.substring(0, 500));
+            return { success: false, error: "Invalid XML response" };
+        }
 
-            let xmlRows = [];
-            let $xml = null;
-            if (typeof data === 'string' && data.includes('<?xml')) {
-                $xml = cheerio.load(data, { xmlMode: true });
-                xmlRows = $xml('row').toArray();
-            } else {
-                console.log(`[CDC-DEBUG] XML not found in GET response. Data was:`, data.substring(0, 500));
-            }
+        if (xmlRows.length > 0 && $xml) {
+            for (let el of xmlRows) {
+                const cellsArr = $xml(el).find('cell').toArray();
+                if (cellsArr.length >= 8) {
+                    const typeStr = $xml(cellsArr[1]).text().trim();
+                    // USER REQUEST 1: Skip INTERNSHIP notices.
+                    if (typeStr.toUpperCase() === 'INTERNSHIP') continue;
 
-
-
-            if (xmlRows.length > 0 && $xml) {
-                for (let el of xmlRows) {
-                    const cellsArr = $xml(el).find('cell').toArray();
-                    if (cellsArr.length >= 8) {
-                        const typeStr = $xml(cellsArr[1]).text().trim();
-                        // USER REQUEST 1: Skip INTERNSHIP notices. 
-                        // We check for INTERNSHIP specifically because ERP might use "JOB" instead of "PLACEMENT"
-                        if (typeStr.toUpperCase() === 'INTERNSHIP') continue;
-
-                        elements.push({
-                            type: typeStr,
-                            subject: $xml(cellsArr[2]).text().trim(),
-                            company: $xml(cellsArr[3]).text().trim(),
-                            noticeHtml: $xml(cellsArr[4]).text().trim(),
-                            date: $xml(cellsArr[6]).text().trim(),
-                            attachHtml: $xml(cellsArr[8]).text().trim()
-                        });
-                    }
+                    elements.push({
+                        type: typeStr,
+                        subject: $xml(cellsArr[2]).text().trim(),
+                        company: $xml(cellsArr[3]).text().trim(),
+                        noticeHtml: $xml(cellsArr[4]).text().trim(),
+                        date: $xml(cellsArr[6]).text().trim(),
+                        attachHtml: $xml(cellsArr[8]).text().trim()
+                    });
                 }
-            } else {
-                console.log(`[CDC] Found 0 <row> tags on page ${page} even after POST. Stopping pagination.`);
-                break;
             }
         }
         

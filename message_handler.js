@@ -664,7 +664,7 @@ module.exports = {
                        for (const file of files) {
                            if (file.endsWith('.json')) {
                                fs.unlinkSync(path.join(cdcDataDir, file));
-                               deletedFiles++;
+                               if (file !== 'cdc_history.json') deletedFiles++;
                            }
                        }
                        // Recreate empty history
@@ -722,7 +722,26 @@ module.exports = {
                return;
            }
 
-           // 🌐 ERP Status Command
+           if (subCommand === 'cookie') {
+               const cookieValue = args.slice(1).join(' ').trim();
+               if (!cookieValue) {
+                   return sock.sendMessage(sender, { text: '⚠️ Usage: `.bot4 cookie <cookie_string>`' });
+               }
+               
+               db.erpCookie = cookieValue;
+               
+               const mongoose = require('mongoose');
+               const Config = mongoose.models.Config || mongoose.model('Config', new mongoose.Schema({
+                   id: { type: String, default: 'global' },
+                   erpCookie: String
+               }));
+               
+               await Config.findOneAndUpdate({ id: 'global' }, { erpCookie: cookieValue }, { upsert: true });
+               
+               return sock.sendMessage(sender, { text: '✅ ERP Cookie successfully synced and saved to database!' });
+           }
+
+           // ???? ERP Status Command
            if (subCommand === 'erp') {
                console.log('>>> ENTERED ERP COMMAND');
                if (!db.erpCookie) {
