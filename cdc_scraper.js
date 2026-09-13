@@ -173,8 +173,12 @@ async function scrapeCDC(fetchAll = false) {
                 for (let el of xmlRows) {
                     const cellsArr = $xml(el).find('cell').toArray();
                     if (cellsArr.length >= 8) {
+                        const typeStr = $xml(cellsArr[1]).text().trim();
+                        // USER REQUEST 1: Strictly filter for PLACEMENT only, ignore INTERNSHIP immediately to save memory
+                        if (typeStr.toUpperCase() !== 'PLACEMENT') continue;
+
                         elements.push({
-                            type: $xml(cellsArr[1]).text().trim(),
+                            type: typeStr,
                             subject: $xml(cellsArr[2]).text().trim(),
                             company: $xml(cellsArr[3]).text().trim(),
                             noticeHtml: $xml(cellsArr[4]).text().trim(),
@@ -203,17 +207,16 @@ async function scrapeCDC(fetchAll = false) {
             const company = el.company;
             const updateTime = el.date;
             
-            // USER REQUEST 1: Only fetch PLACEMENT notices, skip INTERNSHIP
-            if (type && type.toUpperCase() !== 'PLACEMENT') continue;
-            
             let noticeDetails = '';
-            const titleMatch = (el.noticeHtml || '').match(/title=['"]([^'"]*)['"]/i);
+            // FIX: Robust regex that matches until the href attribute to allow single quotes inside the title
+            const titleMatch = (el.noticeHtml || '').match(/title=['"]([\s\S]*?)['"]\s+(?:href|onclick|style|>)/i);
             if (titleMatch) noticeDetails = titleMatch[1];
             else noticeDetails = (el.noticeHtml || '').replace(/<[^>]*>?/gm, '').trim();
+            noticeDetails = noticeDetails.replace(/&amp;/g, '&');
 
             let downloadLink = '';
             const hrefMatch = (el.attachHtml || '').match(/href=['"]([^'"]*)['"]/i);
-            if (hrefMatch) downloadLink = hrefMatch[1];
+            if (hrefMatch) downloadLink = hrefMatch[1].replace(/&amp;/g, '&'); // FIX: Unescape HTML entities so ERP accepts the URL!
             if (downloadLink === 'javascript:void(0);') downloadLink = '';
             
             if (downloadLink) {

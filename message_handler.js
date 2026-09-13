@@ -657,12 +657,21 @@ module.exports = {
                if (cdcArg === 'reset') {
                    const fs = require('fs');
                    const path = require('path');
-                   const historyPath = path.join(__dirname, 'cdc_data', 'cdc_history.json');
-                   if (fs.existsSync(historyPath)) {
-                       fs.writeFileSync(historyPath, '[]');
-                       await sock.sendMessage(sender, { text: '🗑️ CDC history cleared! Running `.bot4 cdc fetchall` now will fetch everything as fresh notices.' });
+                   const cdcDataDir = path.join(__dirname, 'cdc_data');
+                   let deletedFiles = 0;
+                   if (fs.existsSync(cdcDataDir)) {
+                       const files = fs.readdirSync(cdcDataDir);
+                       for (const file of files) {
+                           if (file.endsWith('.json')) {
+                               fs.unlinkSync(path.join(cdcDataDir, file));
+                               deletedFiles++;
+                           }
+                       }
+                       // Recreate empty history
+                       fs.writeFileSync(path.join(cdcDataDir, 'cdc_history.json'), '[]');
+                       await sock.sendMessage(sender, { text: `🗑️ CDC history reset! Cleared ${deletedFiles} outbox files. Running \`.bot4 cdc fetchall\` now will fetch everything fresh.` });
                    } else {
-                       await sock.sendMessage(sender, { text: '⚠️ No CDC history found to clear.' });
+                       await sock.sendMessage(sender, { text: '⚠️ No CDC data folder found to clear.' });
                    }
                    return;
                }
