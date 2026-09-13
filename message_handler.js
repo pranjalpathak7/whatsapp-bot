@@ -598,8 +598,26 @@ module.exports = {
                if (cdcArg === 'debug') {
                    try {
                        const axios = require('axios');
-                       const url = 'https://erp.iitkgp.ac.in/TrainingPlacementSSO/ERPMonitoring.htm?action=fetchData&jqqueryid=54&_search=false&rows=5&page=1&sidx=&sord=asc&totalrows=5&nd=' + Date.now();
-                       const res = await axios.get(url, { headers: { 'Cookie': db.erpCookie, 'X-Requested-With': 'XMLHttpRequest' }});
+                       const url = 'https://erp.iitkgp.ac.in/TrainingPlacementSSO/ERPMonitoring.htm?action=fetchData&jqqueryid=54&_search=false&rows=200&page=1&sidx=&sord=asc&totalrows=500&nd=' + Date.now();
+                       const res = await axios.get(url, { 
+                           headers: { 
+                               'Accept': 'application/xml, text/xml, */*; q=0.01',
+                               'Accept-Encoding': 'gzip, deflate, br, zstd',
+                               'Accept-Language': 'en-US,en;q=0.9',
+                               'Connection': 'keep-alive',
+                               'Cookie': db.erpCookie, 
+                               'Host': 'erp.iitkgp.ac.in',
+                               'Referer': 'https://erp.iitkgp.ac.in/TrainingPlacementSSO/ERPMonitoring.htm',
+                               'Sec-Ch-Ua': '"Not/A)Brand";v="8", "Chromium";v="126", "Google Chrome";v="126"',
+                               'Sec-Ch-Ua-Mobile': '?0',
+                               'Sec-Ch-Ua-Platform': '"Windows"',
+                               'Sec-Fetch-Dest': 'empty',
+                               'Sec-Fetch-Mode': 'cors',
+                               'Sec-Fetch-Site': 'same-origin',
+                               'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+                               'X-Requested-With': 'XMLHttpRequest' 
+                           }
+                       });
                        const dataStr = typeof res.data === 'string' ? res.data : JSON.stringify(res.data, null, 2);
                        await sock.sendMessage(sender, { text: 'DEBUG RESPONSE:\n' + dataStr.substring(0, 3000) });
                    } catch(e) {
