@@ -729,16 +729,7 @@ module.exports = {
                }
                
                db.erpCookie = cookieValue;
-               
-               const mongoose = require('mongoose');
-               const Config = mongoose.models.Config || mongoose.model('Config', new mongoose.Schema({
-                   id: { type: String, default: 'global' },
-                   erpCookie: String
-               }));
-               
-               await Config.findOneAndUpdate({ id: 'global' }, { erpCookie: cookieValue }, { upsert: true });
-               
-               return sock.sendMessage(sender, { text: '✅ ERP Cookie successfully synced and saved to database!' });
+               return sock.sendMessage(sender, { text: '✅ ERP Cookie successfully synced in active memory!' });
            }
 
            // ???? ERP Status Command
