@@ -97,7 +97,6 @@ async function scrapeCDC(fetchAll = false) {
 
     try {
         let elements = [];
-        const maxPages = fetchAll ? 100 : 3; 
         const util = require('util');
         const exec = util.promisify(require('child_process').exec);
 
@@ -125,11 +124,14 @@ async function scrapeCDC(fetchAll = false) {
         const step3Cmd = `curl -s --compressed -H "Cookie: ${cdcCookie}" -H "Accept: application/xml, text/xml, */*; q=0.01" -H "Referer: https://erp.iitkgp.ac.in/TrainingPlacementSSO/ERPMonitoring.htm" -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36" -H "X-Requested-With: XMLHttpRequest" "https://erp.iitkgp.ac.in/TrainingPlacementSSO/ERPMonitoring.htm?action=fetchData&jqqueryid=37&_search=false&nd=${Date.now()}&rows=20&page=1&sidx=&sord=asc&totalrows=50"`;
         try { await exec(step3Cmd, { maxBuffer: 1024 * 1024 * 10 }); } catch (e) { console.log(`[CDC] Step 3 failed:`, e.message); }
 
+        // FIX: The ERP server ignores page numbers in curl and always returns page 1.
+        // We will fetch up to 9999 rows at once to bypass the pagination bug!
+        const maxPages = 1; 
 
         for (let page = 1; page <= maxPages; page++) {
-            console.log(`[CDC] Fetching page ${page} (jqqueryid=54) with perfect headers via CURL...`);
+            console.log(`[CDC] Fetching ALL notices (rows=9999) with perfect headers via CURL...`);
             
-            const url = `https://erp.iitkgp.ac.in/TrainingPlacementSSO/ERPMonitoring.htm?action=fetchData&jqqueryid=54&_search=false&rows=20&page=${page}&sidx=&sord=asc&totalrows=50&nd=${Date.now()}`;
+            const url = `https://erp.iitkgp.ac.in/TrainingPlacementSSO/ERPMonitoring.htm?action=fetchData&jqqueryid=54&_search=false&rows=9999&page=1&sidx=&sord=asc&nd=${Date.now()}`;
             // GET request with Referer set to showmenu.htm
             const curlCmdGet = `curl -s --compressed -H "Cookie: ${cdcCookie}" -H "Accept: application/xml, text/xml, */*; q=0.01" -H "Accept-Language: en-US,en;q=0.9" -H "Connection: keep-alive" -H "Host: erp.iitkgp.ac.in" -H "Referer: https://erp.iitkgp.ac.in/IIT_ERP3/showmenu.htm" -H "Sec-Ch-Ua: \\"Not/A)Brand\\";v=\\"8\\", \\"Chromium\\";v=\\"126\\", \\"Google Chrome\\";v=\\"126\\"" -H "Sec-Ch-Ua-Mobile: ?0" -H "Sec-Ch-Ua-Platform: \\"Windows\\"" -H "Sec-Fetch-Dest: empty" -H "Sec-Fetch-Mode: cors" -H "Sec-Fetch-Site: same-origin" -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36" -H "X-Requested-With: XMLHttpRequest" "${url}"`;
 
