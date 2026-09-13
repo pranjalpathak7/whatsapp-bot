@@ -669,7 +669,7 @@ module.exports = {
                        }
                        // Recreate empty history
                        fs.writeFileSync(path.join(cdcDataDir, 'cdc_history.json'), '[]');
-                       await sock.sendMessage(sender, { text: `🗑️ CDC history reset! Cleared ${deletedFiles} outbox files. Running \`.bot4 cdc fetchall\` now will fetch everything fresh.` });
+                       await sock.sendMessage(sender, { text: `✅ CDC history reset! Cleared ${deletedFiles} date-grouped outbox files (which contained all your previously fetched notices). Running \`.bot4 cdc fetchall\` now will fetch everything fresh.` });
                    } else {
                        await sock.sendMessage(sender, { text: '⚠️ No CDC data folder found to clear.' });
                    }

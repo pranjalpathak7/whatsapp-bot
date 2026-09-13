@@ -194,7 +194,7 @@ async function scrapeCDC(fetchAll = false) {
                             const match = html.match(/href=['"]([^'"]*)['"]/i);
                             if (match) {
                                 const href = match[1];
-                                if (href.includes('TPFile.jsp') || href.toLowerCase().endsWith('.pdf') || href.includes('download')) {
+                                if (!href.toLowerCase().startsWith('javascript:') && (href.includes('TPFile') || href.toLowerCase().endsWith('.pdf') || href.includes('download'))) {
                                     attachHtml = html;
                                     break;
                                 }
