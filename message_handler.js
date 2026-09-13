@@ -594,7 +594,15 @@ module.exports = {
                    const { execSync } = require('child_process');
                    const targetUrl = parts.slice(2).join(' ');
                    if (!targetUrl) return sock.sendMessage(sender, { text: 'Usage: .bot4 curl <url>' });
-                   const cmd = `curl -i -s -H "Cookie: ${db.erpCookie}" "${targetUrl}"`;
+                   
+                   let fixedCookie = db.erpCookie;
+                   const match = fixedCookie.match(/JSID_TrainingPlacementSSO=([^;]+)/);
+                   if (match) {
+                       fixedCookie = fixedCookie.replace(/JSESSIONID=[^;]+(?:;\s*)?/g, '');
+                       fixedCookie = `JSESSIONID=${match[1]}; ` + fixedCookie;
+                   }
+                   
+                   const cmd = `curl -i -s -H "Cookie: ${fixedCookie}" "${targetUrl}"`;
                    const stdout = execSync(cmd).toString();
                    await sock.sendMessage(sender, { text: 'CURL OUTPUT:\n' + stdout.substring(0, 3500) });
                } catch(e) {

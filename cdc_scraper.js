@@ -110,12 +110,21 @@ async function scrapeCDC(fetchAll = false) {
         const util = require('util');
         const exec = util.promisify(require('child_process').exec);
 
+        // FIX: The ERP has different JSESSIONIDs for different paths.
+        // We must extract JSID_TrainingPlacementSSO and force it to be the JSESSIONID.
+        let cdcCookie = db.erpCookie;
+        const match = cdcCookie.match(/JSID_TrainingPlacementSSO=([^;]+)/);
+        if (match) {
+            cdcCookie = cdcCookie.replace(/JSESSIONID=[^;]+(?:;\s*)?/g, '');
+            cdcCookie = `JSESSIONID=${match[1]}; ` + cdcCookie;
+        }
+
         for (let page = 1; page <= maxPages; page++) {
             console.log(`[CDC] Fetching page ${page} with perfect headers via CURL...`);
             
             const url = `https://erp.iitkgp.ac.in/TrainingPlacementSSO/ERPMonitoring.htm?action=fetchData&jqqueryid=54&_search=false&rows=20&page=${page}&sidx=&sord=asc&totalrows=50&nd=${Date.now()}`;
             // GET request with Referer set to showmenu.htm
-            const curlCmdGet = `curl -s --compressed -H "Cookie: ${db.erpCookie}" -H "Accept: application/xml, text/xml, */*; q=0.01" -H "Accept-Language: en-US,en;q=0.9" -H "Connection: keep-alive" -H "Host: erp.iitkgp.ac.in" -H "Referer: https://erp.iitkgp.ac.in/IIT_ERP3/showmenu.htm" -H "Sec-Ch-Ua: \\"Not/A)Brand\\";v=\\"8\\", \\"Chromium\\";v=\\"126\\", \\"Google Chrome\\";v=\\"126\\"" -H "Sec-Ch-Ua-Mobile: ?0" -H "Sec-Ch-Ua-Platform: \\"Windows\\"" -H "Sec-Fetch-Dest: empty" -H "Sec-Fetch-Mode: cors" -H "Sec-Fetch-Site: same-origin" -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36" -H "X-Requested-With: XMLHttpRequest" "${url}"`;
+            const curlCmdGet = `curl -s --compressed -H "Cookie: ${cdcCookie}" -H "Accept: application/xml, text/xml, */*; q=0.01" -H "Accept-Language: en-US,en;q=0.9" -H "Connection: keep-alive" -H "Host: erp.iitkgp.ac.in" -H "Referer: https://erp.iitkgp.ac.in/IIT_ERP3/showmenu.htm" -H "Sec-Ch-Ua: \\"Not/A)Brand\\";v=\\"8\\", \\"Chromium\\";v=\\"126\\", \\"Google Chrome\\";v=\\"126\\"" -H "Sec-Ch-Ua-Mobile: ?0" -H "Sec-Ch-Ua-Platform: \\"Windows\\"" -H "Sec-Fetch-Dest: empty" -H "Sec-Fetch-Mode: cors" -H "Sec-Fetch-Site: same-origin" -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36" -H "X-Requested-With: XMLHttpRequest" "${url}"`;
 
             let data = '';
             try {
@@ -136,7 +145,7 @@ async function scrapeCDC(fetchAll = false) {
             // If GET returned 0 rows, try POST! jqGrid often uses POST for fetchData.
             if (xmlRows.length === 0) {
                 console.log(`[CDC] GET returned 0 rows on page ${page}. Retrying with POST...`);
-                const curlCmdPost = `curl -s --compressed -X POST -H "Cookie: ${db.erpCookie}" -H "Accept: application/xml, text/xml, */*; q=0.01" -H "Accept-Language: en-US,en;q=0.9" -H "Connection: keep-alive" -H "Host: erp.iitkgp.ac.in" -H "Referer: https://erp.iitkgp.ac.in/IIT_ERP3/showmenu.htm" -H "Sec-Ch-Ua: \\"Not/A)Brand\\";v=\\"8\\", \\"Chromium\\";v=\\"126\\", \\"Google Chrome\\";v=\\"126\\"" -H "Sec-Ch-Ua-Mobile: ?0" -H "Sec-Ch-Ua-Platform: \\"Windows\\"" -H "Sec-Fetch-Dest: empty" -H "Sec-Fetch-Mode: cors" -H "Sec-Fetch-Site: same-origin" -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36" -H "X-Requested-With: XMLHttpRequest" "${url}" -d ""`;
+                const curlCmdPost = `curl -s --compressed -X POST -H "Cookie: ${cdcCookie}" -H "Accept: application/xml, text/xml, */*; q=0.01" -H "Accept-Language: en-US,en;q=0.9" -H "Connection: keep-alive" -H "Host: erp.iitkgp.ac.in" -H "Referer: https://erp.iitkgp.ac.in/IIT_ERP3/showmenu.htm" -H "Sec-Ch-Ua: \\"Not/A)Brand\\";v=\\"8\\", \\"Chromium\\";v=\\"126\\", \\"Google Chrome\\";v=\\"126\\"" -H "Sec-Ch-Ua-Mobile: ?0" -H "Sec-Ch-Ua-Platform: \\"Windows\\"" -H "Sec-Fetch-Dest: empty" -H "Sec-Fetch-Mode: cors" -H "Sec-Fetch-Site: same-origin" -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36" -H "X-Requested-With: XMLHttpRequest" "${url}" -d ""`;
                 try {
                     const { stdout } = await exec(curlCmdPost, { maxBuffer: 1024 * 1024 * 10 });
                     if (typeof stdout === 'string' && stdout.includes('<?xml')) {
