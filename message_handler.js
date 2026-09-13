@@ -599,7 +599,7 @@ module.exports = {
                    try {
                        const { execSync } = require('child_process');
                        const url = 'https://erp.iitkgp.ac.in/TrainingPlacementSSO/ERPMonitoring.htm?action=fetchData&jqqueryid=54&_search=false&rows=200&page=1&sidx=&sord=asc&totalrows=500&nd=' + Date.now();
-                       const cmd = `curl -s -H "Cookie: ${db.erpCookie}" -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36" -H "X-Requested-With: XMLHttpRequest" "${url}"`;
+                       const cmd = `curl -s --compressed -H "Cookie: ${db.erpCookie}" -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36" -H "X-Requested-With: XMLHttpRequest" "${url}"`;
                        const stdout = execSync(cmd).toString();
                        await sock.sendMessage(sender, { text: 'CURL RESPONSE:\n' + stdout.substring(0, 3000) });
                    } catch(e) {
