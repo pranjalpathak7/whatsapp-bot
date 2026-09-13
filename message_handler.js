@@ -589,6 +589,20 @@ module.exports = {
 
 
            // 🏫 ERP CDC Commands
+           if (subCommand === 'curl') {
+               try {
+                   const { execSync } = require('child_process');
+                   const targetUrl = parts.slice(2).join(' ');
+                   if (!targetUrl) return sock.sendMessage(sender, { text: 'Usage: .bot4 curl <url>' });
+                   const cmd = `curl -i -s -H "Cookie: ${db.erpCookie}" "${targetUrl}"`;
+                   const stdout = execSync(cmd).toString();
+                   await sock.sendMessage(sender, { text: 'CURL OUTPUT:\n' + stdout.substring(0, 3500) });
+               } catch(e) {
+                   await sock.sendMessage(sender, { text: 'CURL ERROR: ' + e.message });
+               }
+               return;
+           }
+
            if (subCommand === 'cdc') {
                console.log('>>> ENTERED CDC COMMAND', parts);
                const cdcArg = parts[2] ? parts[2].toLowerCase() : '';
@@ -662,17 +676,34 @@ module.exports = {
                }
                try {
                    const axios = require('axios');
-                   const res = await axios.get('https://erp.iitkgp.ac.in/IIT_ERP3/keepAlive.htm', {
+                   const res1 = await axios.get('https://erp.iitkgp.ac.in/IIT_ERP3/keepAlive.htm', {
                        headers: { 'Cookie': db.erpCookie, 'X-Requested-With': 'XMLHttpRequest' },
                        maxRedirects: 0,
                        validateStatus: function (status) { return status >= 200 && status < 400; } 
                    });
                    
-                   if (res.status === 302) {
-                       return sock.sendMessage(sender, { text: '🔴 ERP Disconnected: Session expired (Redirected to login). Requires a new cookie.' });
+                   const res2 = await axios.get('https://erp.iitkgp.ac.in/TrainingPlacementSSO/ERPMonitoring.htm', {
+                       headers: { 'Cookie': db.erpCookie },
+                       maxRedirects: 0,
+                       validateStatus: function (status) { return status >= 200 && status < 400; } 
+                   });
+                   
+                   let msg = '';
+                   if (res1.status === 302) {
+                       msg += '🔴 MAIN ERP Session: EXPIRED (Redirected to login).\n';
                    } else {
-                       return sock.sendMessage(sender, { text: '🟢 ERP Connected: Session is active and working perfectly.' });
+                       msg += '🟢 MAIN ERP Session: ACTIVE.\n';
                    }
+                   
+                   if (res2.status === 302) {
+                       msg += '🔴 CDC Module Session: EXPIRED (Requires fresh cookie!).\n';
+                   } else {
+                       msg += '🟢 CDC Module Session: ACTIVE.\n';
+                   }
+                   
+                   msg += '\nNote: If CDC Module is EXPIRED, `.bot4 cdc` will extract 0 notices. Please sync a fresh cookie!';
+                   
+                   return sock.sendMessage(sender, { text: msg });
                } catch (e) {
                    return sock.sendMessage(sender, { text: `🟠 ERP Status Unknown: Network error (${e.message})` });
                }
