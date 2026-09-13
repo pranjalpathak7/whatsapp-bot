@@ -105,50 +105,66 @@ async function scrapeCDC(fetchAll = false) {
     }
 
     try {
-        const rows = fetchAll ? 2000 : 50; 
-        const url = `https://erp.iitkgp.ac.in/TrainingPlacementSSO/ERPMonitoring.htm?action=fetchData&jqqueryid=54&_search=false&rows=${rows}&page=1&sidx=&sord=asc&totalrows=${rows}&nd=${Date.now()}`;
-        
-        console.log("[CDC] Fetching notices with perfect headers via CURL...");
-        
+        let elements = [];
+        const maxPages = fetchAll ? 100 : 3; 
         const util = require('util');
         const exec = util.promisify(require('child_process').exec);
-        
-        const curlCmd = `curl -s --compressed -H "Cookie: ${db.erpCookie}" -H "Accept: application/xml, text/xml, */*; q=0.01" -H "Accept-Language: en-US,en;q=0.9" -H "Connection: keep-alive" -H "Host: erp.iitkgp.ac.in" -H "Referer: https://erp.iitkgp.ac.in/TrainingPlacementSSO/ERPMonitoring.htm" -H "Sec-Ch-Ua: \\"Not/A)Brand\\";v=\\"8\\", \\"Chromium\\";v=\\"126\\", \\"Google Chrome\\";v=\\"126\\"" -H "Sec-Ch-Ua-Mobile: ?0" -H "Sec-Ch-Ua-Platform: \\"Windows\\"" -H "Sec-Fetch-Dest: empty" -H "Sec-Fetch-Mode: cors" -H "Sec-Fetch-Site: same-origin" -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36" -H "X-Requested-With: XMLHttpRequest" "${url}"`;
 
-        let data = '';
-        try {
-            const { stdout } = await exec(curlCmd, { maxBuffer: 1024 * 1024 * 10 });
-            data = stdout;
-        } catch (e) {
-            console.log('[CDC] CURL Error:', e.message);
-            return { success: false, error: 'CURL Request Failed' };
-        }
+        for (let page = 1; page <= maxPages; page++) {
+            console.log(`[CDC] Fetching page ${page} with perfect headers via CURL...`);
+            
+            const url = `https://erp.iitkgp.ac.in/TrainingPlacementSSO/ERPMonitoring.htm?action=fetchData&jqqueryid=54&_search=false&rows=20&page=${page}&sidx=&sord=asc&totalrows=50&nd=${Date.now()}`;
+            const curlCmdGet = `curl -s --compressed -H "Cookie: ${db.erpCookie}" -H "Accept: application/xml, text/xml, */*; q=0.01" -H "Accept-Language: en-US,en;q=0.9" -H "Connection: keep-alive" -H "Host: erp.iitkgp.ac.in" -H "Referer: https://erp.iitkgp.ac.in/TrainingPlacementSSO/ERPMonitoring.htm" -H "Sec-Ch-Ua: \\"Not/A)Brand\\";v=\\"8\\", \\"Chromium\\";v=\\"126\\", \\"Google Chrome\\";v=\\"126\\"" -H "Sec-Ch-Ua-Mobile: ?0" -H "Sec-Ch-Ua-Platform: \\"Windows\\"" -H "Sec-Fetch-Dest: empty" -H "Sec-Fetch-Mode: cors" -H "Sec-Fetch-Site: same-origin" -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36" -H "X-Requested-With: XMLHttpRequest" "${url}"`;
 
-        let elements = [];
-        
-        if (typeof data === 'string' && data.includes('<?xml')) {
-            const $ = cheerio.load(data, { xmlMode: true });
-            const xmlRows = $('row').toArray();
-            console.log(`[CDC] Parsed XML, found ${xmlRows.length} rows.`);
+            let data = '';
+            try {
+                const { stdout } = await exec(curlCmdGet, { maxBuffer: 1024 * 1024 * 10 });
+                data = stdout;
+            } catch (e) {
+                console.log(`[CDC] CURL Error on page ${page}:`, e.message);
+                break;
+            }
 
-            if (xmlRows.length > 0) {
+            let xmlRows = [];
+            let $xml = null;
+            if (typeof data === 'string' && data.includes('<?xml')) {
+                $xml = cheerio.load(data, { xmlMode: true });
+                xmlRows = $xml('row').toArray();
+            }
+
+            // If GET returned 0 rows, try POST! jqGrid often uses POST for fetchData.
+            if (xmlRows.length === 0) {
+                console.log(`[CDC] GET returned 0 rows on page ${page}. Retrying with POST...`);
+                const curlCmdPost = `curl -s --compressed -X POST -H "Cookie: ${db.erpCookie}" -H "Accept: application/xml, text/xml, */*; q=0.01" -H "Accept-Language: en-US,en;q=0.9" -H "Connection: keep-alive" -H "Host: erp.iitkgp.ac.in" -H "Referer: https://erp.iitkgp.ac.in/TrainingPlacementSSO/ERPMonitoring.htm" -H "Sec-Ch-Ua: \\"Not/A)Brand\\";v=\\"8\\", \\"Chromium\\";v=\\"126\\", \\"Google Chrome\\";v=\\"126\\"" -H "Sec-Ch-Ua-Mobile: ?0" -H "Sec-Ch-Ua-Platform: \\"Windows\\"" -H "Sec-Fetch-Dest: empty" -H "Sec-Fetch-Mode: cors" -H "Sec-Fetch-Site: same-origin" -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36" -H "X-Requested-With: XMLHttpRequest" "${url}" -d ""`;
+                try {
+                    const { stdout } = await exec(curlCmdPost, { maxBuffer: 1024 * 1024 * 10 });
+                    if (typeof stdout === 'string' && stdout.includes('<?xml')) {
+                        $xml = cheerio.load(stdout, { xmlMode: true });
+                        xmlRows = $xml('row').toArray();
+                        console.log(`[CDC] POST returned ${xmlRows.length} rows!`);
+                    }
+                } catch (e) {
+                    console.log(`[CDC] CURL POST Error on page ${page}:`, e.message);
+                }
+            }
+
+            if (xmlRows.length > 0 && $xml) {
                 for (let el of xmlRows) {
-                    const cells = $(el).find('cell');
-                    // According to user's XML: cell[1]=Type, cell[2]=Subject, cell[3]=Company, cell[4]=Notice, cell[6]=Date, cell[8]=Attachment
-                    if (cells.length >= 8) {
+                    const cellsArr = $xml(el).find('cell').toArray();
+                    if (cellsArr.length >= 8) {
                         elements.push({
-                            type: cells.eq(1).text().trim(),
-                            subject: cells.eq(2).text().trim(),
-                            company: cells.eq(3).text().trim(),
-                            noticeHtml: cells.eq(4).text().trim(),
-                            date: cells.eq(6).text().trim(),
-                            attachHtml: cells.eq(8).text().trim()
+                            type: $xml(cellsArr[1]).text().trim(),
+                            subject: $xml(cellsArr[2]).text().trim(),
+                            company: $xml(cellsArr[3]).text().trim(),
+                            noticeHtml: $xml(cellsArr[4]).text().trim(),
+                            date: $xml(cellsArr[6]).text().trim(),
+                            attachHtml: $xml(cellsArr[8]).text().trim()
                         });
                     }
                 }
             } else {
-                console.log("[CDC] Found 0 <row> tags. Raw response preview:");
-                console.log(data.substring(0, 500));
+                console.log(`[CDC] Found 0 <row> tags on page ${page} even after POST. Stopping pagination.`);
+                break;
             }
         }
         
