@@ -766,7 +766,7 @@ module.exports = {
                    });
                    
                    let msg = '';
-                   if (res1.status === 302) {
+                   if (res1.status === 302 || (res1.data && typeof res1.data === 'string' && res1.data.includes('logoutmsg.htm'))) {
                        msg += '🔴 MAIN ERP Session: EXPIRED (Redirected to login).\n';
                    } else {
                        msg += '🟢 MAIN ERP Session: ACTIVE.\n';
