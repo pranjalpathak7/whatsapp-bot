@@ -433,6 +433,218 @@ module.exports = {
        }
        // 🟢 NEW BLOCK FOR BOT 3 ENDS HERE 🟢
 
+       // ==========================================
+       // INDEPENDENT ERP/CDC COMMANDS (.cdc, .erp, .cookie, .curl)
+       // ==========================================
+       if (text.startsWith('.cdc') || text.startsWith('.cookie') || text.startsWith('.erp') || text.startsWith('.curl')) {
+           const parts = text.split(' ');
+           const command = parts[0];
+
+           if (command === '.curl') {
+               try {
+                   const { execSync } = require('child_process');
+                   const targetUrl = parts.slice(1).join(' ');
+                   if (!targetUrl) return sock.sendMessage(sender, { text: 'Usage: .curl <url>' });
+                   
+                   let fixedCookie = db.erpCookie;
+                   const match = fixedCookie.match(/JSID_TrainingPlacementSSO=([^;]+)/);
+                   if (match && targetUrl.includes('TrainingPlacementSSO')) {
+                       fixedCookie = fixedCookie.replace(/JSESSIONID=[^;]+(?:;\s*)?/g, '');
+                       fixedCookie = `JSESSIONID=${match[1]}; ` + fixedCookie;
+                   }
+                   
+                   const cmd = `curl -i -s --compressed -H "Cookie: ${fixedCookie}" -H "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8" -H "Accept-Language: en-US,en;q=0.9" -H "Connection: keep-alive" -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36" -H "Sec-Fetch-Dest: document" -H "Sec-Fetch-Mode: navigate" -H "Sec-Fetch-Site: none" -H "Sec-Fetch-User: ?1" -H "Upgrade-Insecure-Requests: 1" "${targetUrl}"`;
+                   const stdout = execSync(cmd).toString();
+                   await sock.sendMessage(sender, { text: 'CURL OUTPUT:\n' + stdout.substring(0, 3500) });
+               } catch(e) {
+                   await sock.sendMessage(sender, { text: 'CURL ERROR: ' + e.message });
+               }
+               return;
+           }
+
+           if (subCommand === 'rawcurl') {
+               try {
+                   const { execSync } = require('child_process');
+                   let rawCommand = parts.slice(1).join(' ');
+                   if (!rawCommand.startsWith('curl')) return sock.sendMessage(sender, { text: 'Must start with curl' });
+                   
+                   // Find the Cookie header and fix it dynamically just in case
+                   let fixedCookie = db.erpCookie;
+                   const match = fixedCookie.match(/JSID_TrainingPlacementSSO=([^;]+)/);
+                   if (match) {
+                       fixedCookie = fixedCookie.replace(/JSESSIONID=[^;]+(?:;\s*)?/g, '');
+                       fixedCookie = `JSESSIONID=${match[1]}; ` + fixedCookie;
+                       // Replace the cookie string in the raw command
+                       rawCommand = rawCommand.replace(/(Cookie:\s*)[^"']+/i, `
+       // 🟢 NEW BLOCK FOR BOT 3 ENDS HERE 🟢
+${fixedCookie}`);
+                   }
+                   
+                   const stdout = execSync(rawCommand).toString();
+                   await sock.sendMessage(sender, { text: 'RAWCURL OUTPUT:\n' + stdout.substring(0, 3500) });
+               } catch(e) {
+                   await sock.sendMessage(sender, { text: 'RAWCURL ERROR: ' + e.message });
+               }
+               return;
+           }
+
+           if (command === '.cdc') {
+               console.log('>>> ENTERED CDC COMMAND', parts);
+               const cdcArg = parts[1] ? parts[1].toLowerCase() : '';
+               const cdcScraper = require('./cdc_scraper');
+
+               
+               if (cdcArg === 'debug') {
+                   try {
+                       const { execSync } = require('child_process');
+                       const url = 'https://erp.iitkgp.ac.in/TrainingPlacementSSO/ERPMonitoring.htm?action=fetchData&jqqueryid=54&_search=false&rows=200&page=1&sidx=&sord=asc&totalrows=500&nd=' + Date.now();
+                       const cmd = `curl -s --compressed -H "Cookie: ${db.erpCookie}" -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36" -H "X-Requested-With: XMLHttpRequest" "${url}"`;
+                       const stdout = execSync(cmd).toString();
+                       await sock.sendMessage(sender, { text: 'CURL RESPONSE:\n' + stdout.substring(0, 3000) });
+                   } catch(e) {
+                       await sock.sendMessage(sender, { text: 'CURL ERROR: ' + e.message });
+                   }
+                   return;
+               }
+
+               if (cdcArg === 'reset') {
+                   const fs = require('fs');
+                   const path = require('path');
+                   const cdcDataDir = path.join(__dirname, 'cdc_data');
+                   let deletedFiles = 0;
+                   if (fs.existsSync(cdcDataDir)) {
+                       const files = fs.readdirSync(cdcDataDir);
+                       for (const file of files) {
+                           if (file.endsWith('.json')) {
+                               fs.unlinkSync(path.join(cdcDataDir, file));
+                               if (file !== 'cdc_history.json') deletedFiles++;
+                           }
+                       }
+                       // Recreate empty history
+                       fs.writeFileSync(path.join(cdcDataDir, 'cdc_history.json'), '[]');
+                       await sock.sendMessage(sender, { text: `✅ CDC history reset! Cleared ${deletedFiles} date-grouped outbox files (which contained all your previously fetched notices). Running \`.cdc fetchall\` now will fetch everything fresh.` });
+                   } else {
+                       await sock.sendMessage(sender, { text: '⚠️ No CDC data folder found to clear.' });
+                   }
+                   return;
+               }
+
+               if (cdcArg === 'fetchall') {
+                   await sock.sendMessage(sender, { text: '⏳ Fetching all historical notices... This may take a minute.' });
+                   const result = await cdcScraper.scrapeCDC(true);
+                   if (result.success) {
+                       return sock.sendMessage(sender, { text: `✅ Bulk fetch complete. Extracted ${result.processed} new historical notices.` });
+                   } else {
+                       return sock.sendMessage(sender, { text: `❌ Fetch failed: ${result.error}` });
+                   }
+               }
+
+               let targetDDMM = cdcArg;
+               if (!targetDDMM || !/^\d{4}$/.test(targetDDMM)) {
+                   // USER REQUEST: Use Indian timezone (IST) for the fallback today date
+                   const today = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
+                   targetDDMM = String(today.getDate()).padStart(2, '0') + String(today.getMonth() + 1).padStart(2, '0');
+               }
+
+               const path = require('path');
+               const dataFile = path.join(__dirname, 'cdc_data', `${targetDDMM}.json`);
+               if (!fs.existsSync(dataFile)) {
+                   // USER REQUEST: Format the fallback message properly like "15-09-2026"
+                   const formattedDate = `${targetDDMM.substring(0, 2)}-${targetDDMM.substring(2, 4)}-${new Date().getFullYear()}`;
+                   return sock.sendMessage(sender, { text: `📉 No CDC notices found for date: ${formattedDate}` });
+               }
+
+               try {
+                   const notices = JSON.parse(fs.readFileSync(dataFile));
+                   if (notices.length === 0) return sock.sendMessage(sender, { text: `⚠️ No CDC notices found for date: ${targetDDMM}` });
+                   
+                   const fullDate = notices[0] && notices[0].updateTime ? notices[0].updateTime.split(' ')[0] : targetDDMM;
+                   await sock.sendMessage(sender, { text: `📅 *CDC Notices for ${fullDate}* (${notices.length} notices found)` });
+                   
+                   for (const notice of notices) {
+                       const formattedMessage = `*🏢 Company:* ${notice.company}\n` +
+                           `*💼 Type:* ${notice.type}\n` +
+                           `*📌 Subject:* ${notice.subject}\n` +
+                           `*🕒 Updated At:* ${notice.updateTime}\n` +
+                           `*📝 Details:* ${notice.noticeDetails}\n\n` +
+                           `*📎 Attachment:* ${notice.downloadLink}`;
+                       
+                       await sock.sendMessage(sender, { text: formattedMessage });
+                       await new Promise(r => setTimeout(r, 1000));
+                   }
+               } catch(e) {
+                   return sock.sendMessage(sender, { text: `❌ Error reading notices: ${e.message}` });
+               }
+               return;
+           }
+
+           if (command === '.cookie') {
+               const cookieValue = parts.slice(1).join(' ').trim();
+               if (!cookieValue) {
+                   return sock.sendMessage(sender, { text: '⚠️ Usage: `.cookie <cookie_string>`' });
+               }
+               
+               db.erpCookie = cookieValue;
+               return sock.sendMessage(sender, { text: '✅ ERP Cookie successfully synced in active memory!' });
+           }
+
+           // ???? ERP Status Command
+           if (command === '.erp') {
+               console.log('>>> ENTERED ERP COMMAND');
+               if (!db.erpCookie) {
+                   return sock.sendMessage(sender, { text: '🔴 ERP Disconnected: No active session cookie in database.' });
+               }
+               try {
+                   // Keep the cookie fresh by updating the LAST_ACCESS_TIME timestamp dynamically
+                   db.erpCookie = db.erpCookie.replace(/LAST_ACCESS_TIME=\d+/, 'LAST_ACCESS_TIME=' + Date.now());
+                   
+                   const getCookieForModule = (cookieStr, moduleName) => {
+                       let newCookie = cookieStr;
+                       const match = newCookie.match(new RegExp(`${moduleName}=([^;]+)`));
+                       if (match) {
+                           newCookie = newCookie.replace(/JSESSIONID=[^;]+(?:;\s*)?/g, '');
+                           newCookie = `JSESSIONID=${match[1]}; ` + newCookie;
+                       }
+                       return newCookie;
+                   };
+
+                   const axios = require('axios');
+                   const res1 = await axios.get('https://erp.iitkgp.ac.in/IIT_ERP3/keepAlive.htm', {
+                       headers: { 'Cookie': getCookieForModule(db.erpCookie, 'JSID_IIT_ERP3'), 'X-Requested-With': 'XMLHttpRequest' },
+                       maxRedirects: 0,
+                       validateStatus: function (status) { return status >= 200 && status < 400; } 
+                   });
+                   
+                   const res2 = await axios.get('https://erp.iitkgp.ac.in/TrainingPlacementSSO/ERPMonitoring.htm', {
+                       headers: { 'Cookie': getCookieForModule(db.erpCookie, 'JSID_TrainingPlacementSSO') },
+                       maxRedirects: 0,
+                       validateStatus: function (status) { return status >= 200 && status < 400; } 
+                   });
+                   
+                   let msg = '';
+                   if (res1.status === 302 || (res1.data && typeof res1.data === 'string' && res1.data.includes('logoutmsg.htm'))) {
+                       msg += '🔴 MAIN ERP Session: EXPIRED (Redirected to login).\n';
+                   } else {
+                       msg += '🟢 MAIN ERP Session: ACTIVE.\n';
+                   }
+                   
+                   if (res2.status === 302) {
+                       msg += '🔴 CDC Module Session: EXPIRED (Requires fresh cookie!).\n';
+                   } else {
+                       msg += '🟢 CDC Module Session: ACTIVE.\n';
+                   }
+                   
+                   msg += '\nNote: If CDC Module is EXPIRED, `.cdc` will extract 0 notices. Please sync a fresh cookie!';
+                   
+                   return sock.sendMessage(sender, { text: msg });
+               } catch (e) {
+                   return sock.sendMessage(sender, { text: `🟠 ERP Status Unknown: Network error (${e.message})` });
+               }
+           }
+
+       }
+
+
        if (text.startsWith('.bot4 ')) {
            const parts = text.split(' ');
            const subCommand = parts[1];
@@ -588,207 +800,7 @@ module.exports = {
            }
 
 
-           // 🏫 ERP CDC Commands
-           if (subCommand === 'curl') {
-               try {
-                   const { execSync } = require('child_process');
-                   const targetUrl = parts.slice(2).join(' ');
-                   if (!targetUrl) return sock.sendMessage(sender, { text: 'Usage: .bot4 curl <url>' });
-                   
-                   let fixedCookie = db.erpCookie;
-                   const match = fixedCookie.match(/JSID_TrainingPlacementSSO=([^;]+)/);
-                   if (match && targetUrl.includes('TrainingPlacementSSO')) {
-                       fixedCookie = fixedCookie.replace(/JSESSIONID=[^;]+(?:;\s*)?/g, '');
-                       fixedCookie = `JSESSIONID=${match[1]}; ` + fixedCookie;
-                   }
-                   
-                   const cmd = `curl -i -s --compressed -H "Cookie: ${fixedCookie}" -H "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8" -H "Accept-Language: en-US,en;q=0.9" -H "Connection: keep-alive" -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36" -H "Sec-Fetch-Dest: document" -H "Sec-Fetch-Mode: navigate" -H "Sec-Fetch-Site: none" -H "Sec-Fetch-User: ?1" -H "Upgrade-Insecure-Requests: 1" "${targetUrl}"`;
-                   const stdout = execSync(cmd).toString();
-                   await sock.sendMessage(sender, { text: 'CURL OUTPUT:\n' + stdout.substring(0, 3500) });
-               } catch(e) {
-                   await sock.sendMessage(sender, { text: 'CURL ERROR: ' + e.message });
-               }
-               return;
-           }
-
-           if (subCommand === 'rawcurl') {
-               try {
-                   const { execSync } = require('child_process');
-                   let rawCommand = parts.slice(2).join(' ');
-                   if (!rawCommand.startsWith('curl')) return sock.sendMessage(sender, { text: 'Must start with curl' });
-                   
-                   // Find the Cookie header and fix it dynamically just in case
-                   let fixedCookie = db.erpCookie;
-                   const match = fixedCookie.match(/JSID_TrainingPlacementSSO=([^;]+)/);
-                   if (match) {
-                       fixedCookie = fixedCookie.replace(/JSESSIONID=[^;]+(?:;\s*)?/g, '');
-                       fixedCookie = `JSESSIONID=${match[1]}; ` + fixedCookie;
-                       // Replace the cookie string in the raw command
-                       rawCommand = rawCommand.replace(/(Cookie:\s*)[^"']+/i, `$1${fixedCookie}`);
-                   }
-                   
-                   const stdout = execSync(rawCommand).toString();
-                   await sock.sendMessage(sender, { text: 'RAWCURL OUTPUT:\n' + stdout.substring(0, 3500) });
-               } catch(e) {
-                   await sock.sendMessage(sender, { text: 'RAWCURL ERROR: ' + e.message });
-               }
-               return;
-           }
-
-           if (subCommand === 'cdc') {
-               console.log('>>> ENTERED CDC COMMAND', parts);
-               const cdcArg = parts[2] ? parts[2].toLowerCase() : '';
-               const cdcScraper = require('./cdc_scraper');
-
-               
-               if (cdcArg === 'debug') {
-                   try {
-                       const { execSync } = require('child_process');
-                       const url = 'https://erp.iitkgp.ac.in/TrainingPlacementSSO/ERPMonitoring.htm?action=fetchData&jqqueryid=54&_search=false&rows=200&page=1&sidx=&sord=asc&totalrows=500&nd=' + Date.now();
-                       const cmd = `curl -s --compressed -H "Cookie: ${db.erpCookie}" -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36" -H "X-Requested-With: XMLHttpRequest" "${url}"`;
-                       const stdout = execSync(cmd).toString();
-                       await sock.sendMessage(sender, { text: 'CURL RESPONSE:\n' + stdout.substring(0, 3000) });
-                   } catch(e) {
-                       await sock.sendMessage(sender, { text: 'CURL ERROR: ' + e.message });
-                   }
-                   return;
-               }
-
-               if (cdcArg === 'reset') {
-                   const fs = require('fs');
-                   const path = require('path');
-                   const cdcDataDir = path.join(__dirname, 'cdc_data');
-                   let deletedFiles = 0;
-                   if (fs.existsSync(cdcDataDir)) {
-                       const files = fs.readdirSync(cdcDataDir);
-                       for (const file of files) {
-                           if (file.endsWith('.json')) {
-                               fs.unlinkSync(path.join(cdcDataDir, file));
-                               if (file !== 'cdc_history.json') deletedFiles++;
-                           }
-                       }
-                       // Recreate empty history
-                       fs.writeFileSync(path.join(cdcDataDir, 'cdc_history.json'), '[]');
-                       await sock.sendMessage(sender, { text: `✅ CDC history reset! Cleared ${deletedFiles} date-grouped outbox files (which contained all your previously fetched notices). Running \`.bot4 cdc fetchall\` now will fetch everything fresh.` });
-                   } else {
-                       await sock.sendMessage(sender, { text: '⚠️ No CDC data folder found to clear.' });
-                   }
-                   return;
-               }
-
-               if (cdcArg === 'fetchall') {
-                   await sock.sendMessage(sender, { text: '⏳ Fetching all historical notices... This may take a minute.' });
-                   const result = await cdcScraper.scrapeCDC(true);
-                   if (result.success) {
-                       return sock.sendMessage(sender, { text: `✅ Bulk fetch complete. Extracted ${result.processed} new historical notices.` });
-                   } else {
-                       return sock.sendMessage(sender, { text: `❌ Fetch failed: ${result.error}` });
-                   }
-               }
-
-               let targetDDMM = cdcArg;
-               if (!targetDDMM || !/^\d{4}$/.test(targetDDMM)) {
-                   // USER REQUEST: Use Indian timezone (IST) for the fallback today date
-                   const today = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
-                   targetDDMM = String(today.getDate()).padStart(2, '0') + String(today.getMonth() + 1).padStart(2, '0');
-               }
-
-               const path = require('path');
-               const dataFile = path.join(__dirname, 'cdc_data', `${targetDDMM}.json`);
-               if (!fs.existsSync(dataFile)) {
-                   // USER REQUEST: Format the fallback message properly like "15-09-2026"
-                   const formattedDate = `${targetDDMM.substring(0, 2)}-${targetDDMM.substring(2, 4)}-${new Date().getFullYear()}`;
-                   return sock.sendMessage(sender, { text: `📉 No CDC notices found for date: ${formattedDate}` });
-               }
-
-               try {
-                   const notices = JSON.parse(fs.readFileSync(dataFile));
-                   if (notices.length === 0) return sock.sendMessage(sender, { text: `⚠️ No CDC notices found for date: ${targetDDMM}` });
-                   
-                   const fullDate = notices[0] && notices[0].updateTime ? notices[0].updateTime.split(' ')[0] : targetDDMM;
-                   await sock.sendMessage(sender, { text: `📅 *CDC Notices for ${fullDate}* (${notices.length} notices found)` });
-                   
-                   for (const notice of notices) {
-                       const formattedMessage = `*🏢 Company:* ${notice.company}\n` +
-                           `*💼 Type:* ${notice.type}\n` +
-                           `*📌 Subject:* ${notice.subject}\n` +
-                           `*🕒 Updated At:* ${notice.updateTime}\n` +
-                           `*📝 Details:* ${notice.noticeDetails}\n\n` +
-                           `*📎 Attachment:* ${notice.downloadLink}`;
-                       
-                       await sock.sendMessage(sender, { text: formattedMessage });
-                       await new Promise(r => setTimeout(r, 1000));
-                   }
-               } catch(e) {
-                   return sock.sendMessage(sender, { text: `❌ Error reading notices: ${e.message}` });
-               }
-               return;
-           }
-
-           if (subCommand === 'cookie') {
-               const cookieValue = parts.slice(2).join(' ').trim();
-               if (!cookieValue) {
-                   return sock.sendMessage(sender, { text: '⚠️ Usage: `.bot4 cookie <cookie_string>`' });
-               }
-               
-               db.erpCookie = cookieValue;
-               return sock.sendMessage(sender, { text: '✅ ERP Cookie successfully synced in active memory!' });
-           }
-
-           // ???? ERP Status Command
-           if (subCommand === 'erp') {
-               console.log('>>> ENTERED ERP COMMAND');
-               if (!db.erpCookie) {
-                   return sock.sendMessage(sender, { text: '🔴 ERP Disconnected: No active session cookie in database.' });
-               }
-               try {
-                   // Keep the cookie fresh by updating the LAST_ACCESS_TIME timestamp dynamically
-                   db.erpCookie = db.erpCookie.replace(/LAST_ACCESS_TIME=\d+/, 'LAST_ACCESS_TIME=' + Date.now());
-                   
-                   const getCookieForModule = (cookieStr, moduleName) => {
-                       let newCookie = cookieStr;
-                       const match = newCookie.match(new RegExp(`${moduleName}=([^;]+)`));
-                       if (match) {
-                           newCookie = newCookie.replace(/JSESSIONID=[^;]+(?:;\s*)?/g, '');
-                           newCookie = `JSESSIONID=${match[1]}; ` + newCookie;
-                       }
-                       return newCookie;
-                   };
-
-                   const axios = require('axios');
-                   const res1 = await axios.get('https://erp.iitkgp.ac.in/IIT_ERP3/keepAlive.htm', {
-                       headers: { 'Cookie': getCookieForModule(db.erpCookie, 'JSID_IIT_ERP3'), 'X-Requested-With': 'XMLHttpRequest' },
-                       maxRedirects: 0,
-                       validateStatus: function (status) { return status >= 200 && status < 400; } 
-                   });
-                   
-                   const res2 = await axios.get('https://erp.iitkgp.ac.in/TrainingPlacementSSO/ERPMonitoring.htm', {
-                       headers: { 'Cookie': getCookieForModule(db.erpCookie, 'JSID_TrainingPlacementSSO') },
-                       maxRedirects: 0,
-                       validateStatus: function (status) { return status >= 200 && status < 400; } 
-                   });
-                   
-                   let msg = '';
-                   if (res1.status === 302 || (res1.data && typeof res1.data === 'string' && res1.data.includes('logoutmsg.htm'))) {
-                       msg += '🔴 MAIN ERP Session: EXPIRED (Redirected to login).\n';
-                   } else {
-                       msg += '🟢 MAIN ERP Session: ACTIVE.\n';
-                   }
-                   
-                   if (res2.status === 302) {
-                       msg += '🔴 CDC Module Session: EXPIRED (Requires fresh cookie!).\n';
-                   } else {
-                       msg += '🟢 CDC Module Session: ACTIVE.\n';
-                   }
-                   
-                   msg += '\nNote: If CDC Module is EXPIRED, `.bot4 cdc` will extract 0 notices. Please sync a fresh cookie!';
-                   
-                   return sock.sendMessage(sender, { text: msg });
-               } catch (e) {
-                   return sock.sendMessage(sender, { text: `🟠 ERP Status Unknown: Network error (${e.message})` });
-               }
-           }
-
+           
        }
        // 🟢 NEW BLOCK FOR BOT 3 ENDS HERE 🟢
 
