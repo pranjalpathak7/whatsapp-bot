@@ -2,9 +2,9 @@ require('dotenv').config();
 const { delay } = require('@whiskeysockets/baileys');
 const { google } = require('googleapis');
 const exec = require('yt-dlp-exec');
-const { exec: cpExec } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const { exec: cpExec } = require('child_process');
 const os = require('os');
 const db = require('./database');
 const systemVitals = require('./system_vitals');
@@ -183,8 +183,6 @@ module.exports = {
             const parts = text.split(' ');
             const subCommand = parts[1];
 
-            const fs = require('fs');
-            const path = require('path');
             const outboxDir = path.join(__dirname, 'bot2_outbox');
             if (!fs.existsSync(outboxDir)) fs.mkdirSync(outboxDir);
 
@@ -320,8 +318,6 @@ module.exports = {
            const parts = text.split(' ');
            const subCommand = parts[1];
 
-           const fs = require('fs');
-           const path = require('path');
            const outboxDir = path.join(__dirname, 'bot3_outbox');
            if (!fs.existsSync(outboxDir)) fs.mkdirSync(outboxDir);
 
@@ -436,7 +432,7 @@ module.exports = {
        // ==========================================
        // INDEPENDENT ERP/CDC COMMANDS (.cdc, .erp, .cookie, .curl)
        // ==========================================
-       if (text.startsWith('.cdc') || text.startsWith('.cookie') || text.startsWith('.erp') || text.startsWith('.curl')) {
+       if (text.startsWith('.cdc') || text.startsWith('.cookie') || text.startsWith('.erp') || text.startsWith('.curl') || text.startsWith('.rawcurl')) {
            const parts = text.split(' ');
            const command = parts[0];
 
@@ -462,7 +458,7 @@ module.exports = {
                return;
            }
 
-           if (subCommand === 'rawcurl') {
+           if (command === '.rawcurl') {
                try {
                    const { execSync } = require('child_process');
                    let rawCommand = parts.slice(1).join(' ');
@@ -508,8 +504,6 @@ ${fixedCookie}`);
                }
 
                if (cdcArg === 'reset') {
-                   const fs = require('fs');
-                   const path = require('path');
                    const cdcDataDir = path.join(__dirname, 'cdc_data');
                    let deletedFiles = 0;
                    if (fs.existsSync(cdcDataDir)) {
@@ -546,7 +540,6 @@ ${fixedCookie}`);
                    targetDDMM = String(today.getDate()).padStart(2, '0') + String(today.getMonth() + 1).padStart(2, '0');
                }
 
-               const path = require('path');
                const dataFile = path.join(__dirname, 'cdc_data', `${targetDDMM}.json`);
                if (!fs.existsSync(dataFile)) {
                    // USER REQUEST: Format the fallback message properly like "15-09-2026"
@@ -649,8 +642,6 @@ ${fixedCookie}`);
            const parts = text.split(' ');
            const subCommand = parts[1];
 
-           const fs = require('fs');
-           const path = require('path');
            const outboxDir = path.join(__dirname, 'bot4_outbox');
            if (!fs.existsSync(outboxDir)) fs.mkdirSync(outboxDir);
 
