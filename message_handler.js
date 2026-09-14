@@ -688,14 +688,17 @@ module.exports = {
 
                let targetDDMM = cdcArg;
                if (!targetDDMM || !/^\d{4}$/.test(targetDDMM)) {
-                   const today = new Date();
+                   // USER REQUEST: Use Indian timezone (IST) for the fallback today date
+                   const today = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
                    targetDDMM = String(today.getDate()).padStart(2, '0') + String(today.getMonth() + 1).padStart(2, '0');
                }
 
                const path = require('path');
                const dataFile = path.join(__dirname, 'cdc_data', `${targetDDMM}.json`);
                if (!fs.existsSync(dataFile)) {
-                   return sock.sendMessage(sender, { text: `⚠️ No CDC notices found for date: ${targetDDMM}` });
+                   // USER REQUEST: Format the fallback message properly like "15-09-2026"
+                   const formattedDate = `${targetDDMM.substring(0, 2)}-${targetDDMM.substring(2, 4)}-${new Date().getFullYear()}`;
+                   return sock.sendMessage(sender, { text: `📉 No CDC notices found for date: ${formattedDate}` });
                }
 
                try {

@@ -212,12 +212,7 @@ module.exports = {
             } catch (error) {} // Log quietly
         });
 
-        // CDC Scraper (every 10 minutes)
-        cron.schedule('*/10 * * * *', () => {
-            if (db.erpCookie) {
-                cdcScraper.scrapeCDC();
-            }
-        });
+        // Removed duplicate CDC Scraper cron. Fetching is now exclusively handled by bot.js so it can capture and broadcast newNotices.
 
         try { app.listen(PORT, () => console.log(`🌐 Dashboard: Port ${PORT}`)); } catch(e){}
     }
