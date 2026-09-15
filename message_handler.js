@@ -40,10 +40,18 @@ async function uploadToDrive(filePath, fileName) {
             console.error("❌ Google Drive credentials not configured or file not found:", DRIVE_KEY_FILE);
             return null;
         }
-        console.log("☁️ Uploading with Validated Identity...");
+        console.log("☁️⬆️ Uploading with Validated Identity...");
+        
+        let mime = 'application/octet-stream';
+        const lowerPath = filePath.toLowerCase();
+        if (lowerPath.endsWith('.mp4')) mime = 'video/mp4';
+        else if (lowerPath.endsWith('.jpg') || lowerPath.endsWith('.jpeg')) mime = 'image/jpeg';
+        else if (lowerPath.endsWith('.png')) mime = 'image/png';
+        else if (lowerPath.endsWith('.webm')) mime = 'video/webm';
+
         const file = await driveClient.files.create({ 
             resource: { name: fileName, parents: [DRIVE_FOLDER_ID] }, 
-            media: { mimeType: 'video/mp4', body: fs.createReadStream(filePath) }, 
+            media: { mimeType: mime, body: fs.createReadStream(filePath) }, 
             fields: 'id, webViewLink' 
         });
         await driveClient.permissions.create({ fileId: file.data.id, requestBody: { role: 'reader', type: 'anyone' } });
@@ -77,7 +85,8 @@ function runShellCommand(cmd, cwd = __dirname) {
 const pendingDownloads = new Map();
 
 async function executeDownload(url, maxQuality, sender, sock) {
-    const outPath = path.join(__dirname, `vid_${Date.now()}.mp4`);
+    const dlDir = path.join(__dirname, `dl_${Date.now()}`);
+    fs.mkdirSync(dlDir, { recursive: true });
     const cookiesPath = path.join(__dirname, 'cookies.txt');
     
     let hasFfmpeg = false;
@@ -100,9 +109,9 @@ async function executeDownload(url, maxQuality, sender, sock) {
     }
 
     const execOpts = { 
-        output: outPath, 
+        output: path.join(dlDir, '%(autonumber)s.%(ext)s'), 
         format: formatString, 
-        noPlaylist: true,
+        playlistEnd: 10, // Max 10 items to prevent massive YouTube playlist accidents
         jsRuntimes: 'node',
         extractorArgs: 'youtube:player_client=ios,android'
     };
@@ -110,21 +119,31 @@ async function executeDownload(url, maxQuality, sender, sock) {
     if (fs.existsSync(cookiesPath)) execOpts.cookies = cookiesPath;
 
     const doDownload = async () => {
-        let msg = maxQuality ? `☁️⬇️ Downloading video (Max ${maxQuality}p)...` : `☁️⬇️ Downloading video (Best possible quality)...`;
+        let msg = maxQuality ? `⬇️ Downloading (Max ${maxQuality}p)...` : `⬇️ Downloading (Best possible quality)...`;
         if (!hasFfmpeg) msg += "\n\n⚠️ *Note:* `ffmpeg` is missing. Quality is capped to 720p.";
         
         await sock.sendMessage(sender, { text: msg });
         await exec(url, execOpts);
         
-        if (!fs.existsSync(outPath)) {
-            const files = fs.readdirSync(__dirname).filter(f => f.startsWith(path.basename(outPath, '.mp4')) && f !== path.basename(outPath));
-            for (const f of files) fs.unlinkSync(path.join(__dirname, f));
-            throw new Error("File missing after download (Likely ffmpeg merge failure)");
+        const files = fs.readdirSync(dlDir);
+        if (files.length === 0) {
+            throw new Error("No files downloaded.");
         }
         
-        await sock.sendMessage(sender, { text: "☁️⬆️ Uploading to Drive..." });
-        const link = await uploadToDrive(outPath, outPath.split('/').pop());
-        await sock.sendMessage(sender, { text: link ? `✅ Done!\n${link}` : "❌ Upload Fail" });
+        await sock.sendMessage(sender, { text: `☁️ Uploading ${files.length} item(s) to Drive...` });
+        
+        let links = [];
+        for (const file of files) {
+            const filePath = path.join(dlDir, file);
+            const link = await uploadToDrive(filePath, `saved_${Date.now()}_${file}`);
+            if (link) links.push(link);
+        }
+        
+        if (links.length > 0) {
+            await sock.sendMessage(sender, { text: `✅ Done!\n\n` + links.join("\n") });
+        } else {
+            await sock.sendMessage(sender, { text: "❌ Upload Fail" });
+        }
     };
 
     try {
@@ -132,7 +151,7 @@ async function executeDownload(url, maxQuality, sender, sock) {
     } catch (e) { 
         if (e.message && (e.message.includes('403') || e.message.includes('Forbidden') || e.message.includes('update') || e.message.includes('Sign in'))) {
             try {
-                await sock.sendMessage(sender, { text: "🛡️ YouTube anti-bot protections (403) detected. Updating yt-dlp... (Takes ~10s)" });
+                await sock.sendMessage(sender, { text: "🛡️ Anti-bot protections detected. Updating yt-dlp... (Takes ~10s)" });
                 await exec('', { update: true });
                 await sock.sendMessage(sender, { text: "✅ Binary updated! Retrying..." });
                 await doDownload();
@@ -143,7 +162,9 @@ async function executeDownload(url, maxQuality, sender, sock) {
             await sock.sendMessage(sender, { text: "❌ Download Error: " + (e.message.substring(0, 300)) });
         }
     } finally { 
-        if (fs.existsSync(outPath)) try { fs.unlinkSync(outPath); } catch (err) {} 
+        if (fs.existsSync(dlDir)) {
+            try { fs.rmSync(dlDir, { recursive: true, force: true }); } catch (err) {}
+        }
     }
 }
 
