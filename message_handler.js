@@ -931,10 +931,18 @@ ${fixedCookie}`);
             const cookiesPath = path.join(__dirname, 'cookies.txt');
             
             let hasFfmpeg = false;
+            let ffmpegLocation = null;
             try {
-                require('child_process').execSync('ffmpeg -version', { stdio: 'ignore' });
-                hasFfmpeg = true;
-            } catch (e) {}
+                // First try to use the self-contained ffmpeg-static binary
+                ffmpegLocation = require('ffmpeg-static');
+                if (ffmpegLocation) hasFfmpeg = true;
+            } catch (e) {
+                // Fallback to system ffmpeg if ffmpeg-static is missing
+                try {
+                    require('child_process').execSync('ffmpeg -version', { stdio: 'ignore' });
+                    hasFfmpeg = true;
+                } catch (err) {}
+            }
 
             let formatString = hasFfmpeg ? 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best' : 'best[ext=mp4]/best';
             if (maxQuality) {
@@ -950,6 +958,9 @@ ${fixedCookie}`);
                 jsRuntimes: 'node',
                 extractorArgs: 'youtube:player_client=ios,android'
             };
+            if (ffmpegLocation) {
+                execOpts.ffmpegLocation = ffmpegLocation;
+            }
             if (fs.existsSync(cookiesPath)) {
                 execOpts.cookies = cookiesPath;
             }
