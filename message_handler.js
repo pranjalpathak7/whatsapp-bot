@@ -915,22 +915,49 @@ ${fixedCookie}`);
 
         if (text.startsWith('.save')) {
             const url = text.split(/\s+/)[1];
-            if (!url) return sock.sendMessage(sender, { text: "❌ Invalid URL" });
-            await sock.sendMessage(sender, { text: "⬇️ Downloading..." });
+            if (!url) return sock.sendMessage(sender, { text: "??? Invalid URL" });
+            
             const outPath = path.join(__dirname, `vid_${Date.now()}.mp4`);
-            try {
-                const cookiesPath = path.join(__dirname, 'cookies.txt');
-                const execOpts = { output: outPath, format: 'best[ext=mp4]', noPlaylist: true };
-                if (fs.existsSync(cookiesPath)) {
-                    execOpts.cookies = cookiesPath;
-                }
+            const cookiesPath = path.join(__dirname, 'cookies.txt');
+            
+            const execOpts = { 
+                output: outPath, 
+                format: 'best[ext=mp4]', 
+                noPlaylist: true,
+                jsRuntimes: 'node',
+                extractorArgs: 'youtube:player_client=ios,android'
+            };
+            if (fs.existsSync(cookiesPath)) {
+                execOpts.cookies = cookiesPath;
+            }
+
+            const downloadVideo = async () => {
+                await sock.sendMessage(sender, { text: "?????? Downloading video..." });
                 await exec(url, execOpts);
-                if (!fs.existsSync(outPath)) throw new Error("File missing");
-                await sock.sendMessage(sender, { text: "☁️ Uploading..." });
+                if (!fs.existsSync(outPath)) throw new Error("File missing after download");
+                await sock.sendMessage(sender, { text: "?????? Uploading to Drive..." });
                 const link = await uploadToDrive(outPath, outPath.split('/').pop());
-                await sock.sendMessage(sender, { text: link ? `✅ Done!\n${link}` : "❌ Upload Fail" });
-            } catch (e) { await sock.sendMessage(sender, { text: "❌ " + e.message });
-            } finally { if (fs.existsSync(outPath)) try { fs.unlinkSync(outPath); } catch (err) {} }
+                await sock.sendMessage(sender, { text: link ? `??? Done!\n${link}` : "??? Upload Fail" });
+            };
+
+            try {
+                await downloadVideo();
+            } catch (e) { 
+                if (e.message && (e.message.includes('403') || e.message.includes('Forbidden') || e.message.includes('update') || e.message.includes('Sign in'))) {
+                    try {
+                        await sock.sendMessage(sender, { text: "???? YouTube anti-bot protections (403) detected. Updating core yt-dlp binary to latest version... (Takes ~10 seconds)" });
+                        await exec('', { update: true });
+                        await sock.sendMessage(sender, { text: "??? Binary successfully updated! Retrying download..." });
+                        await downloadVideo();
+                    } catch (err2) {
+                        await sock.sendMessage(sender, { text: "??? Final retry failed: " + (err2.message.substring(0, 300)) });
+                    }
+                } else {
+                    await sock.sendMessage(sender, { text: "??? Download Error: " + (e.message.substring(0, 300)) });
+                }
+            } finally { 
+                if (fs.existsSync(outPath)) try { fs.unlinkSync(outPath); } catch (err) {} 
+            }
             return;
         }
 
