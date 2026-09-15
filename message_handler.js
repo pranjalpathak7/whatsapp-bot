@@ -914,15 +914,38 @@ ${fixedCookie}`);
         if (text === '!ping') return sock.sendMessage(sender, { text: "pong 🏓" });
 
         if (text.startsWith('.save')) {
-            const url = text.split(/\s+/)[1];
-            if (!url) return sock.sendMessage(sender, { text: "??? Invalid URL" });
+            const parts = text.split(/\s+/);
+            let url = "";
+            let maxQuality = null;
+
+            if (parts.length >= 3 && /^\d{3,4}$/.test(parts[1])) {
+                maxQuality = parseInt(parts[1]);
+                url = parts[2];
+            } else {
+                url = parts[1];
+            }
+
+            if (!url) return sock.sendMessage(sender, { text: "❌ Invalid URL. Usage: .save [1080|720] <url>" });
             
             const outPath = path.join(__dirname, `vid_${Date.now()}.mp4`);
             const cookiesPath = path.join(__dirname, 'cookies.txt');
             
+            let hasFfmpeg = false;
+            try {
+                require('child_process').execSync('ffmpeg -version', { stdio: 'ignore' });
+                hasFfmpeg = true;
+            } catch (e) {}
+
+            let formatString = hasFfmpeg ? 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best' : 'best[ext=mp4]/best';
+            if (maxQuality) {
+                formatString = hasFfmpeg 
+                    ? `bestvideo[height<=${maxQuality}][ext=mp4]+bestaudio[ext=m4a]/best[height<=${maxQuality}][ext=mp4]/best`
+                    : `best[height<=${maxQuality}][ext=mp4]/best`;
+            }
+
             const execOpts = { 
                 output: outPath, 
-                format: 'best[ext=mp4]', 
+                format: formatString, 
                 noPlaylist: true,
                 jsRuntimes: 'node',
                 extractorArgs: 'youtube:player_client=ios,android'
@@ -932,12 +955,22 @@ ${fixedCookie}`);
             }
 
             const downloadVideo = async () => {
-                await sock.sendMessage(sender, { text: "?????? Downloading video..." });
+                let msg = maxQuality ? `☁️⬇️ Downloading video (Max ${maxQuality}p)...` : `☁️⬇️ Downloading video (Best possible quality)...`;
+                if (!hasFfmpeg) msg += "\n\n⚠️ *Note:* `ffmpeg` is missing on your server. Quality is capped to 720p (pre-merged). Install `ffmpeg` to enable 1080p+ downloads.";
+                
+                await sock.sendMessage(sender, { text: msg });
                 await exec(url, execOpts);
-                if (!fs.existsSync(outPath)) throw new Error("File missing after download");
-                await sock.sendMessage(sender, { text: "?????? Uploading to Drive..." });
+                
+                // Fallback: If yt-dlp downloaded split files because ffmpeg was missing but we thought it was there
+                if (!fs.existsSync(outPath)) {
+                    const files = fs.readdirSync(__dirname).filter(f => f.startsWith(path.basename(outPath, '.mp4')) && f !== path.basename(outPath));
+                    for (const f of files) fs.unlinkSync(path.join(__dirname, f)); // Cleanup orphaned split files
+                    throw new Error("File missing after download (Likely ffmpeg merge failure)");
+                }
+                
+                await sock.sendMessage(sender, { text: "☁️⬆️ Uploading to Drive..." });
                 const link = await uploadToDrive(outPath, outPath.split('/').pop());
-                await sock.sendMessage(sender, { text: link ? `??? Done!\n${link}` : "??? Upload Fail" });
+                await sock.sendMessage(sender, { text: link ? `✅ Done!\n${link}` : "❌ Upload Fail" });
             };
 
             try {
@@ -945,15 +978,15 @@ ${fixedCookie}`);
             } catch (e) { 
                 if (e.message && (e.message.includes('403') || e.message.includes('Forbidden') || e.message.includes('update') || e.message.includes('Sign in'))) {
                     try {
-                        await sock.sendMessage(sender, { text: "???? YouTube anti-bot protections (403) detected. Updating core yt-dlp binary to latest version... (Takes ~10 seconds)" });
+                        await sock.sendMessage(sender, { text: "🛡️ YouTube anti-bot protections (403) detected. Updating core yt-dlp binary to latest version... (Takes ~10 seconds)" });
                         await exec('', { update: true });
-                        await sock.sendMessage(sender, { text: "??? Binary successfully updated! Retrying download..." });
+                        await sock.sendMessage(sender, { text: "✅ Binary successfully updated! Retrying download..." });
                         await downloadVideo();
                     } catch (err2) {
-                        await sock.sendMessage(sender, { text: "??? Final retry failed: " + (err2.message.substring(0, 300)) });
+                        await sock.sendMessage(sender, { text: "❌ Final retry failed: " + (err2.message.substring(0, 300)) });
                     }
                 } else {
-                    await sock.sendMessage(sender, { text: "??? Download Error: " + (e.message.substring(0, 300)) });
+                    await sock.sendMessage(sender, { text: "❌ Download Error: " + (e.message.substring(0, 300)) });
                 }
             } finally { 
                 if (fs.existsSync(outPath)) try { fs.unlinkSync(outPath); } catch (err) {} 
