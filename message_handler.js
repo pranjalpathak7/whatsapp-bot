@@ -73,6 +73,80 @@ function runShellCommand(cmd, cwd = __dirname) {
     });
 }
 
+
+const pendingDownloads = new Map();
+
+async function executeDownload(url, maxQuality, sender, sock) {
+    const outPath = path.join(__dirname, `vid_${Date.now()}.mp4`);
+    const cookiesPath = path.join(__dirname, 'cookies.txt');
+    
+    let hasFfmpeg = false;
+    let ffmpegLocation = null;
+    try {
+        ffmpegLocation = require('ffmpeg-static');
+        if (ffmpegLocation) hasFfmpeg = true;
+    } catch (e) {
+        try {
+            require('child_process').execSync('ffmpeg -version', { stdio: 'ignore' });
+            hasFfmpeg = true;
+        } catch (err) {}
+    }
+
+    let formatString = hasFfmpeg ? 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best' : 'best[ext=mp4]/best';
+    if (maxQuality) {
+        formatString = hasFfmpeg 
+            ? `bestvideo[height<=${maxQuality}][ext=mp4]+bestaudio[ext=m4a]/best[height<=${maxQuality}][ext=mp4]/best`
+            : `best[height<=${maxQuality}][ext=mp4]/best`;
+    }
+
+    const execOpts = { 
+        output: outPath, 
+        format: formatString, 
+        noPlaylist: true,
+        jsRuntimes: 'node',
+        extractorArgs: 'youtube:player_client=ios,android'
+    };
+    if (ffmpegLocation) execOpts.ffmpegLocation = ffmpegLocation;
+    if (fs.existsSync(cookiesPath)) execOpts.cookies = cookiesPath;
+
+    const doDownload = async () => {
+        let msg = maxQuality ? `☁️⬇️ Downloading video (Max ${maxQuality}p)...` : `☁️⬇️ Downloading video (Best possible quality)...`;
+        if (!hasFfmpeg) msg += "\n\n⚠️ *Note:* `ffmpeg` is missing. Quality is capped to 720p.";
+        
+        await sock.sendMessage(sender, { text: msg });
+        await exec(url, execOpts);
+        
+        if (!fs.existsSync(outPath)) {
+            const files = fs.readdirSync(__dirname).filter(f => f.startsWith(path.basename(outPath, '.mp4')) && f !== path.basename(outPath));
+            for (const f of files) fs.unlinkSync(path.join(__dirname, f));
+            throw new Error("File missing after download (Likely ffmpeg merge failure)");
+        }
+        
+        await sock.sendMessage(sender, { text: "☁️⬆️ Uploading to Drive..." });
+        const link = await uploadToDrive(outPath, outPath.split('/').pop());
+        await sock.sendMessage(sender, { text: link ? `✅ Done!\n${link}` : "❌ Upload Fail" });
+    };
+
+    try {
+        await doDownload();
+    } catch (e) { 
+        if (e.message && (e.message.includes('403') || e.message.includes('Forbidden') || e.message.includes('update') || e.message.includes('Sign in'))) {
+            try {
+                await sock.sendMessage(sender, { text: "🛡️ YouTube anti-bot protections (403) detected. Updating yt-dlp... (Takes ~10s)" });
+                await exec('', { update: true });
+                await sock.sendMessage(sender, { text: "✅ Binary updated! Retrying..." });
+                await doDownload();
+            } catch (err2) {
+                await sock.sendMessage(sender, { text: "❌ Final retry failed: " + (err2.message.substring(0, 300)) });
+            }
+        } else {
+            await sock.sendMessage(sender, { text: "❌ Download Error: " + (e.message.substring(0, 300)) });
+        }
+    } finally { 
+        if (fs.existsSync(outPath)) try { fs.unlinkSync(outPath); } catch (err) {} 
+    }
+}
+
 module.exports = {
     handle: async function(sock, m) {
         const msg = m.messages[0];
@@ -103,6 +177,26 @@ module.exports = {
         logs.push(`${senderLabel}: ${text}`);
         if(logs.length > 50) logs.shift();
         db.groupLogs.set(sender, logs);
+
+        const isReply = !!innerMsg.extendedTextMessage?.contextInfo?.stanzaId;
+        if (isReply) {
+            const repliedMsgId = innerMsg.extendedTextMessage.contextInfo.stanzaId;
+            if (pendingDownloads.has(repliedMsgId)) {
+                const state = pendingDownloads.get(repliedMsgId);
+                const choice = parseInt(text.trim());
+                if (!isNaN(choice) && choice > 0 && choice <= state.heights.length) {
+                    const selectedHeight = state.heights[choice - 1];
+                    pendingDownloads.delete(repliedMsgId);
+                    await sock.sendMessage(sender, { text: `✅ Selected ${selectedHeight}p. Starting download...` });
+                    executeDownload(state.url, selectedHeight, sender, sock);
+                    return;
+                } else if (!isNaN(choice)) {
+                    await sock.sendMessage(sender, { text: "❌ Invalid choice. Please reply with a valid number from the list." });
+                    return;
+                }
+            }
+        }
+
 
         if (text === '.vitals') {
             await sock.sendMessage(sender, { text: "🩺 Running diagnostics..." });
@@ -915,92 +1009,47 @@ ${fixedCookie}`);
 
         if (text.startsWith('.save')) {
             const parts = text.split(/\s+/);
-            let url = "";
-            let maxQuality = null;
+            const url = parts[1];
 
-            if (parts.length >= 3 && /^\d{3,4}$/.test(parts[1])) {
-                maxQuality = parseInt(parts[1]);
-                url = parts[2];
-            } else {
-                url = parts[1];
-            }
+            if (!url) return sock.sendMessage(sender, { text: "❌ Invalid URL. Usage: .save <url>" });
 
-            if (!url) return sock.sendMessage(sender, { text: "❌ Invalid URL. Usage: .save [1080|720] <url>" });
+            await sock.sendMessage(sender, { text: "🔍 Fetching available qualities..." });
             
-            const outPath = path.join(__dirname, `vid_${Date.now()}.mp4`);
-            const cookiesPath = path.join(__dirname, 'cookies.txt');
-            
-            let hasFfmpeg = false;
-            let ffmpegLocation = null;
             try {
-                // First try to use the self-contained ffmpeg-static binary
-                ffmpegLocation = require('ffmpeg-static');
-                if (ffmpegLocation) hasFfmpeg = true;
+                const execOpts = { dumpJson: true, noWarnings: true, jsRuntimes: 'node' };
+                const cookiesPath = path.join(__dirname, 'cookies.txt');
+                if (fs.existsSync(cookiesPath)) execOpts.cookies = cookiesPath;
+                
+                const res = await exec(url, execOpts);
+                const data = typeof res === 'string' ? JSON.parse(res) : res;
+                let heights = [];
+                if (data.formats) {
+                    heights = [...new Set(data.formats.filter(f => f.vcodec !== 'none' && f.height).map(f => f.height))].sort((a,b) => b-a);
+                }
+                
+                if (heights.length <= 1) {
+                    // Only one or zero specific heights found, just download best
+                    await sock.sendMessage(sender, { text: "ℹ️ Only one optimal quality found. Downloading..." });
+                    return executeDownload(url, null, sender, sock);
+                }
+
+                // Multiple choices!
+                let promptText = "🎥 *Available Qualities:*\n\n";
+                heights.forEach((h, i) => {
+                    promptText += `*${i+1}.* ${h}p\n`;
+                });
+                promptText += "\n_Reply to this message with the number to download._";
+                
+                const promptMsg = await sock.sendMessage(sender, { text: promptText });
+                
+                pendingDownloads.set(promptMsg.key.id, { url, heights, sender });
+                
+                // Clear state after 5 mins to prevent memory leak
+                setTimeout(() => {
+                    if (pendingDownloads.has(promptMsg.key.id)) pendingDownloads.delete(promptMsg.key.id);
+                }, 5 * 60 * 1000);
             } catch (e) {
-                // Fallback to system ffmpeg if ffmpeg-static is missing
-                try {
-                    require('child_process').execSync('ffmpeg -version', { stdio: 'ignore' });
-                    hasFfmpeg = true;
-                } catch (err) {}
-            }
-
-            let formatString = hasFfmpeg ? 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best' : 'best[ext=mp4]/best';
-            if (maxQuality) {
-                formatString = hasFfmpeg 
-                    ? `bestvideo[height<=${maxQuality}][ext=mp4]+bestaudio[ext=m4a]/best[height<=${maxQuality}][ext=mp4]/best`
-                    : `best[height<=${maxQuality}][ext=mp4]/best`;
-            }
-
-            const execOpts = { 
-                output: outPath, 
-                format: formatString, 
-                noPlaylist: true,
-                jsRuntimes: 'node',
-                extractorArgs: 'youtube:player_client=ios,android'
-            };
-            if (ffmpegLocation) {
-                execOpts.ffmpegLocation = ffmpegLocation;
-            }
-            if (fs.existsSync(cookiesPath)) {
-                execOpts.cookies = cookiesPath;
-            }
-
-            const downloadVideo = async () => {
-                let msg = maxQuality ? `☁️⬇️ Downloading video (Max ${maxQuality}p)...` : `☁️⬇️ Downloading video (Best possible quality)...`;
-                if (!hasFfmpeg) msg += "\n\n⚠️ *Note:* `ffmpeg` is missing on your server. Quality is capped to 720p (pre-merged). Install `ffmpeg` to enable 1080p+ downloads.";
-                
-                await sock.sendMessage(sender, { text: msg });
-                await exec(url, execOpts);
-                
-                // Fallback: If yt-dlp downloaded split files because ffmpeg was missing but we thought it was there
-                if (!fs.existsSync(outPath)) {
-                    const files = fs.readdirSync(__dirname).filter(f => f.startsWith(path.basename(outPath, '.mp4')) && f !== path.basename(outPath));
-                    for (const f of files) fs.unlinkSync(path.join(__dirname, f)); // Cleanup orphaned split files
-                    throw new Error("File missing after download (Likely ffmpeg merge failure)");
-                }
-                
-                await sock.sendMessage(sender, { text: "☁️⬆️ Uploading to Drive..." });
-                const link = await uploadToDrive(outPath, outPath.split('/').pop());
-                await sock.sendMessage(sender, { text: link ? `✅ Done!\n${link}` : "❌ Upload Fail" });
-            };
-
-            try {
-                await downloadVideo();
-            } catch (e) { 
-                if (e.message && (e.message.includes('403') || e.message.includes('Forbidden') || e.message.includes('update') || e.message.includes('Sign in'))) {
-                    try {
-                        await sock.sendMessage(sender, { text: "🛡️ YouTube anti-bot protections (403) detected. Updating core yt-dlp binary to latest version... (Takes ~10 seconds)" });
-                        await exec('', { update: true });
-                        await sock.sendMessage(sender, { text: "✅ Binary successfully updated! Retrying download..." });
-                        await downloadVideo();
-                    } catch (err2) {
-                        await sock.sendMessage(sender, { text: "❌ Final retry failed: " + (err2.message.substring(0, 300)) });
-                    }
-                } else {
-                    await sock.sendMessage(sender, { text: "❌ Download Error: " + (e.message.substring(0, 300)) });
-                }
-            } finally { 
-                if (fs.existsSync(outPath)) try { fs.unlinkSync(outPath); } catch (err) {} 
+                await sock.sendMessage(sender, { text: "❌ Error fetching qualities: " + e.message.substring(0, 200) });
             }
             return;
         }
