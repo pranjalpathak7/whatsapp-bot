@@ -84,6 +84,56 @@ function runShellCommand(cmd, cwd = __dirname) {
 
 const pendingDownloads = new Map();
 
+let activeSock = null;
+let cdcCronStarted = false;
+
+function startCdcCron() {
+    if (cdcCronStarted) return;
+    cdcCronStarted = true;
+    
+    setInterval(async () => {
+        if (!activeSock) return;
+        const db = require('./database');
+        if (!db.erpCookie) return; // Silent abort if no cookie is loaded in THIS specific bot process
+
+        const cdcScraper = require('./cdc_scraper');
+        try {
+            console.log('[CDC-CRON] Running 10-minute periodic fetch for CDC notices...');
+            const result = await cdcScraper.scrapeCDC(true);
+            
+            if (result.success && result.newNotices && result.newNotices.length > 0) {
+                console.log(`[CDC-CRON] Found ${result.newNotices.length} new notices! Broadcasting to WhatsApp...`);
+                
+                const targetJids = ['917447618862@s.whatsapp.net', '917859848684@s.whatsapp.net'];
+                
+                for (const targetJid of targetJids) {
+                    await activeSock.sendMessage(targetJid, { text: `🚨 *NEW CDC NOTICES DETECTED!* (${result.newNotices.length} new)` });
+                    
+                    for (const notice of result.newNotices) {
+                        const formattedMessage = `*🏢 Company:* ${notice.company}\n` +
+                            `*📋 Type:* ${notice.type}\n` +
+                            `*📝 Subject:* ${notice.subject}\n` +
+                            `*🕒 Updated At:* ${notice.updateTime}\n` +
+                            `*📄 Details:* ${notice.noticeDetails}\n\n` +
+                            `*📎 Attachment:* ${notice.downloadLink}`;
+                        
+                        await activeSock.sendMessage(targetJid, { text: formattedMessage });
+                        await new Promise(r => setTimeout(r, 2000)); // Sleep to prevent rate-limiting
+                    }
+                    
+                    // The user requested: "after waiting for a few seconds, it should send the notices automatically to the second number"
+                    console.log(`[CDC-CRON] Finished sending to ${targetJid}. Waiting 5 seconds before next number...`);
+                    await new Promise(r => setTimeout(r, 5000));
+                }
+            }
+        } catch (e) {
+            console.error('[CDC-CRON] Periodic fetch error:', e.message);
+        }
+    }, 10 * 60 * 1000);
+}
+
+startCdcCron();
+
 async function executeDownload(url, maxQuality, sender, sock) {
     const dlDir = path.join(__dirname, `dl_${Date.now()}`);
     fs.mkdirSync(dlDir, { recursive: true });
@@ -170,6 +220,7 @@ async function executeDownload(url, maxQuality, sender, sock) {
 
 module.exports = {
     handle: async function(sock, m) {
+        activeSock = sock;
         const msg = m.messages[0];
         if (!msg || !msg.message) return;
 

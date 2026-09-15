@@ -17,39 +17,6 @@ scheduler.start(() => globalSock);
 
 const cdcScraper = require('./cdc_scraper');
 // USER REQUEST 3: Check every 10 minutes automatically for new notices
-setInterval(async () => {
-    try {
-        console.log('[CDC-CRON] Running 10-minute periodic fetch for CDC notices...');
-        const result = await cdcScraper.scrapeCDC(true);
-        
-        if (result.success && result.newNotices && result.newNotices.length > 0) {
-            console.log(`[CDC-CRON] Found ${result.newNotices.length} new notices! Broadcasting to WhatsApp...`);
-            if (globalSock) {
-                // The user explicitly requested to send to 7447618862.
-                // Assuming it's an Indian number (+91)
-                const targetJid = '917447618862@s.whatsapp.net';
-                
-                await globalSock.sendMessage(targetJid, { text: `🚨 *NEW CDC NOTICES DETECTED!* (${result.newNotices.length} new)` });
-                
-                for (const notice of result.newNotices) {
-                    const formattedMessage = `*🏢 Company:* ${notice.company}\n` +
-                        `*📋 Type:* ${notice.type}\n` +
-                        `*📌 Subject:* ${notice.subject}\n` +
-                        `*🕒 Updated At:* ${notice.updateTime}\n` +
-                        `*📝 Details:* ${notice.noticeDetails}\n\n` +
-                        `*📎 Attachment:* ${notice.downloadLink}`;
-                    
-                    await globalSock.sendMessage(targetJid, { text: formattedMessage });
-                    await new Promise(r => setTimeout(r, 1500)); // Sleep to prevent rate-limiting
-                }
-            } else {
-                console.log('[CDC-CRON] globalSock is disconnected! Could not broadcast new notices.');
-            }
-        }
-    } catch (e) {
-        console.error('[CDC-CRON] Periodic fetch error:', e.message);
-    }
-}, 10 * 60 * 1000);
 
 async function startBot() {
     console.log('\n⏳ Booting Modular Architecture...');
