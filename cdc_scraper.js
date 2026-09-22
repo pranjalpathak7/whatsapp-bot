@@ -246,8 +246,31 @@ async function scrapeCDC(fetchAll = false) {
                 .trim();
             
             noticeDetails = noticeDetails.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
-            // Clean up excessive newlines
-            noticeDetails = noticeDetails.replace(/\n\s*\n+/g, '\n\n');
+
+            // ADVANCED FORMATTING: The ERP backend literally concatenates text (e.g. removing spaces between Roll Numbers and Names) 
+            // before generating the XML. We use regex to artificially restore the missing newlines and spaces.
+            
+            // 1. Insert newline after any 9-character IITKGP Roll Number
+            noticeDetails = noticeDetails.replace(/([0-9]{2}[a-zA-Z]{2}[a-zA-Z0-9]{5})/g, '$1\n');
+            
+            // 2. Fix "Roll Number1" -> "Roll Number\n1"
+            noticeDetails = noticeDetails.replace(/Roll Number([0-9])/gi, 'Roll Number\n$1');
+            
+            // 3. Insert newline after colon if it's followed by a letter (e.g. "student(s):BHUKYA")
+            noticeDetails = noticeDetails.replace(/:([a-zA-Z])/g, ':\n$1');
+            
+            // 4. Insert space between lowercase and uppercase letter (e.g. "student(s)BHUKYA")
+            noticeDetails = noticeDetails.replace(/([a-z])([A-Z])/g, '$1 $2');
+            
+            // 5. Insert space between digit and Title Case name (e.g. "1Vatsal" -> "1 Vatsal")
+            noticeDetails = noticeDetails.replace(/([0-9])([A-Z][a-z])/g, '$1 $2');
+            
+            // 6. Fix missing spaces after punctuation (e.g. "22.09.26.(For")
+            noticeDetails = noticeDetails.replace(/\.\(/g, '. (');
+            
+            // Clean up excessive newlines and multiple spaces
+            noticeDetails = noticeDetails.replace(/ {2,}/g, ' ');
+            noticeDetails = noticeDetails.replace(/\n\s*\n+/g, '\n\n').trim();
 
             let downloadLink = el.downloadLink || 'No Attachment';
 
