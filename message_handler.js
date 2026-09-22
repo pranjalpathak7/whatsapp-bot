@@ -977,7 +977,7 @@ ${fixedCookie}`);
                 try {
                     const res = await groq.chat.completions.create({
                         messages: [{ role: "user", content: `Summarize who messaged Pranjal and why:\n${allChats}` }],
-                        model: "qwen/qwen3.8-27b"
+                        model: "qwen/qwen3.8-27b", max_tokens: 300
                     });
                     await sock.sendMessage(sender, { text: "📋 *Summary:*\n" + res.choices[0]?.message?.content });
                 } catch(e) {}
@@ -1018,7 +1018,7 @@ ${fixedCookie}`);
                         { role: "system", content: systemPrompt + `\nContext:\n${recentContext}` },
                         { role: "user", content: text }
                     ],
-                    model: "qwen/qwen3.8-27b"
+                    model: "qwen/qwen3.8-27b", max_tokens: 300
                 });
                 const reply = res.choices[0]?.message?.content || "Busy right now.";
 
@@ -1070,7 +1070,7 @@ ${fixedCookie}`);
             try {
                 const res = await groq.chat.completions.create({
                     messages: [{ role: "user", content: "Summarize:\n" + chatLog.join("\n") }],
-                    model: "qwen/qwen3.8-27b"
+                    model: "qwen/qwen3.8-27b", max_tokens: 300
                 });
                 await sock.sendMessage(sender, { text: res.choices[0]?.message?.content });
             } catch(e) {}
@@ -1138,7 +1138,7 @@ ${fixedCookie}`);
 
                 const res = await groq.chat.completions.create({
                     messages: messages,
-                    model: "qwen/qwen3.8-27b"
+                    model: "qwen/qwen3.8-27b", max_tokens: 300
                 });
                 const response = res.choices[0]?.message?.content || "Error generating response.";
 
