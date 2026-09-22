@@ -46,7 +46,7 @@ module.exports = {
                                     try {
                                         const res = await groq.chat.completions.create({
                                             messages: [{ role: "user", content: item.aiPrompt }],
-                                            model: "llama-3.3-70b-versatile",
+                                            model: "qwen/qwen3.8-27b",
                                             temperature: 1.5 // 🛑 Added back to force true randomness!
                                         });
                                         aiResponse = res.choices[0]?.message?.content || "(AI Error)";

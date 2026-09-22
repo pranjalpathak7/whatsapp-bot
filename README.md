@@ -7,7 +7,7 @@ An advanced, multi-account WhatsApp automation suite built with [@whiskeysockets
 ## 🌟 Key Features
 
 ### 1. 🧠 Primary Bot (`bot.js`)
-- **AI-Powered Conversations**: Integrates with Groq (`llama-3.3-70b-versatile`) for context-aware, personality-driven, and memory-backed responses.
+- **AI-Powered Conversations**: Integrates with Groq (`qwen/qwen3.8-27b`) for context-aware, personality-driven, and memory-backed responses.
 - **Dynamic Role Management**: Assign specific roles (e.g. `bestie`, `girlfriend`) to customize AI personality and reply tone per contact.
 - **Persistent Long-Term Memory**: Save (`.remember`), review (`.memories`), and erase (`.forget`) permanent memories stored in JSON.
 - **Smart Busy / Sleep Mode**: Automatic AI auto-replies when busy, buffering missed messages and generating an executive summary upon waking (`.wake`).
