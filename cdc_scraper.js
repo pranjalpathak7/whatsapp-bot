@@ -235,9 +235,19 @@ async function scrapeCDC(fetchAll = false) {
             const company = el.company;
             const updateTime = el.date;
             
-            // FIX: Just strip all HTML tags to get the pure text. This avoids all single quote regex issues entirely!
-            let noticeDetails = (el.noticeHtml || '').replace(/<[^>]*>?/gm, '').trim();
+            // FIX: Convert structural HTML tags to newlines before stripping remaining tags to preserve formatting
+            let noticeDetails = (el.noticeHtml || '')
+                .replace(/<br\s*\/?>/gi, '\n')
+                .replace(/<\/?p>/gi, '\n')
+                .replace(/<\/?div>/gi, '\n')
+                .replace(/<\/?li>/gi, '\n')
+                .replace(/<\/?tr>/gi, '\n')
+                .replace(/<[^>]*>?/gm, '')
+                .trim();
+            
             noticeDetails = noticeDetails.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+            // Clean up excessive newlines
+            noticeDetails = noticeDetails.replace(/\n\s*\n+/g, '\n\n');
 
             let downloadLink = el.downloadLink || 'No Attachment';
 
