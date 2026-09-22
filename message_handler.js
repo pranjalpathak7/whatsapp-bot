@@ -303,9 +303,19 @@ module.exports = {
                 text: `🔄 *[Step 1/3] Git Pull Initiated*\n📁 *Directory:* \`${repoDir}\`\n⏳ Fetching updates from GitHub...` 
             });
 
-            // 1. Run git pull (explicitly syncing with origin/main)
-            const gitRes = await runShellCommand('git fetch origin main && git checkout -B main origin/main && git pull origin main', repoDir);
-            const gitOutput = gitRes.stdout || gitRes.stderr || (gitRes.success ? "Already up to date." : "No output returned.");
+            // 1. Run git pull safely
+            await runShellCommand('git stash', repoDir); // stash uncommitted changes like package-lock.json
+            const gitRes = await runShellCommand('git pull origin main', repoDir);
+            let gitOutput = gitRes.stdout || gitRes.stderr || (gitRes.success ? "Already up to date." : "No output returned.");
+
+            if (gitOutput.includes('Already up to date')) {
+                // Since the AI agent commits directly on the server, .pull will often be already up to date.
+                // Fetch the latest commit info to show the user what changes are currently active.
+                const logRes = await runShellCommand('git log -1 --stat', repoDir);
+                if (logRes.success) {
+                    gitOutput = "Already up to date. Latest applied changes:\n\n" + logRes.stdout.trim();
+                }
+            }
 
             if (!gitRes.success) {
                 console.error("❌ Git Pull Failed:", gitRes.error);
