@@ -188,16 +188,17 @@ async function scrapeCDC(fetchAll = false) {
 
                     // Dynamically find the attachment cell by strictly looking for TPFile.jsp or a direct .pdf link
                     let attachHtml = '';
+                    let downloadLink = '';
                     for (let c = 5; c < cellsArr.length; c++) {
                         const html = $xml(cellsArr[c]).text().trim();
-                        if (html.includes('href=')) {
-                            const match = html.match(/href=['"]([^'"]*)['"]/i);
-                            if (match) {
-                                const href = match[1];
-                                if (!href.toLowerCase().startsWith('javascript:') && (href.includes('TPFile') || href.toLowerCase().endsWith('.pdf') || href.includes('download'))) {
-                                    attachHtml = html;
-                                    break;
-                                }
+                        if (html.includes("title='Download'") || html.includes('title="Download"') || html.includes(">Download<")) {
+                            const tpMatch = html.match(/TPNotice\(['"]([^'"]*)['"]\s*,\s*['"]([^'"]*)['"]\)/);
+                            if (tpMatch) {
+                                const year = tpMatch[1];
+                                const id = tpMatch[2];
+                                downloadLink = `https://erp.iitkgp.ac.in/TrainingPlacementSSO/AdmFilePDF.htm?type=NOTICE&year=${year}&id=${id}`;
+                                attachHtml = html;
+                                break;
                             }
                         }
                     }
@@ -210,7 +211,8 @@ async function scrapeCDC(fetchAll = false) {
                         company: $xml(cellsArr[3]).text().trim(),
                         noticeHtml: $xml(cellsArr[4]).text().trim(),
                         date: dateStr,
-                        attachHtml: attachHtml
+                        attachHtml: attachHtml,
+                        downloadLink: downloadLink
                     });
                 }
             }
@@ -237,20 +239,7 @@ async function scrapeCDC(fetchAll = false) {
             let noticeDetails = (el.noticeHtml || '').replace(/<[^>]*>?/gm, '').trim();
             noticeDetails = noticeDetails.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
 
-            let downloadLink = '';
-            const hrefMatch = (el.attachHtml || '').match(/href=['"]([^'"]*)['"]/i);
-            if (hrefMatch) downloadLink = hrefMatch[1].replace(/&amp;/g, '&'); // FIX: Unescape HTML entities so ERP accepts the URL!
-            if (downloadLink === 'javascript:void(0);') downloadLink = '';
-            
-            if (downloadLink) {
-                if (downloadLink.startsWith('/')) {
-                    downloadLink = 'https://erp.iitkgp.ac.in' + downloadLink;
-                } else if (!downloadLink.startsWith('http')) {
-                    downloadLink = 'https://erp.iitkgp.ac.in/TrainingPlacementSSO/' + downloadLink;
-                }
-            } else {
-                downloadLink = 'No Attachment';
-            }
+            let downloadLink = el.downloadLink || 'No Attachment';
 
             const safeCompany = company || 'General';
             if (updateTime) {
