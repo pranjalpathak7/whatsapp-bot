@@ -45,7 +45,15 @@ async function startBot() {
         if (qr) qrcode.generate(qr, { small: true });
 
         if (connection === 'open') {
-            console.log('\n✅ Rashi Bot v5 (Microservices Edition) Online\n');
+            console.log('\n🟢 Rashi Bot v5 (Microservices Edition) Online\n');
+            
+            // Send Startup Notification to user
+            try {
+                sock.sendMessage('919140770471@s.whatsapp.net', { text: '🟢 *System Alert:* Primary Bot (Rashi v5) has successfully started and is now fully functional!' });
+            } catch(e) {
+                console.error('Failed to send startup notification', e);
+            }
+
             // Subscribe to live presence updates for the default recipient
             try { 
                 sock.presenceSubscribe(TARGET_JID); 
