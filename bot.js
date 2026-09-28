@@ -47,6 +47,9 @@ async function startBot() {
         if (connection === 'open') {
             console.log('\n🟢 Rashi Bot v5 (Microservices Edition) Online\n');
             
+            // Provide socket to message handler for background crons
+            messageHandler.setSocket(sock);
+
             // Send Startup Notification to user
             try {
                 sock.sendMessage('919140770471@s.whatsapp.net', { text: '🟢 *System Alert:* Primary Bot (Rashi v5) has successfully started and is now fully functional!' });

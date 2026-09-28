@@ -219,6 +219,9 @@ async function executeDownload(url, maxQuality, sender, sock) {
 }
 
 module.exports = {
+    setSocket: function(sock) {
+        activeSock = sock;
+    },
     handle: async function(sock, m) {
         activeSock = sock;
         const msg = m.messages[0];
