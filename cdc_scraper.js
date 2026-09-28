@@ -97,7 +97,7 @@ async function downloadAttachment(url, cookie, noticeId) {
     }
 }
 
-async function scrapeCDC(fetchAll = false) {
+async function scrapeCDC(fetchAll = false, force = false) {
     if (!db.erpCookie) {
         console.log("[CDC Scraper] Blocked: No active ERP cookie in database.");
         return { success: false, error: "No ERP Cookie" };
@@ -279,7 +279,7 @@ async function scrapeCDC(fetchAll = false) {
                 const uniqueStr = safeCompany + updateTime;
                 const noticeId = Buffer.from(uniqueStr).toString('base64');
 
-                if (!history.includes(noticeId)) {
+                if (force || !history.includes(noticeId)) {
                     newNotices.push({ type, subject, company: safeCompany, noticeDetails, updateTime, downloadLink, noticeId });
                     updatedHistory.push(noticeId);
                 } else {

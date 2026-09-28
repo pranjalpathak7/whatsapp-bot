@@ -702,6 +702,16 @@ ${fixedCookie}`);
                    return;
                }
 
+               if (cdcArg === 'forcefetch') {
+                   await sock.sendMessage(sender, { text: '⚡ Force fetching all notices (ignoring history)... This may take a minute.' });
+                   const result = await cdcScraper.scrapeCDC(true, true);
+                   if (result.success) {
+                       return sock.sendMessage(sender, { text: `✅ Force fetch complete. Extracted and saved ${result.processed} notices.` });
+                   } else {
+                       return sock.sendMessage(sender, { text: `❌ Fetch failed: ${result.error}` });
+                   }
+               }
+
                if (cdcArg === 'fetchall') {
                    await sock.sendMessage(sender, { text: '⏳ Fetching all historical notices... This may take a minute.' });
                    const result = await cdcScraper.scrapeCDC(true);
